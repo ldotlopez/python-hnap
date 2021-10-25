@@ -22,22 +22,6 @@ class Siren(SoapClient):
         )
         return res == "true"
 
-    # def beep(self, times=1, volume=100):
-    #     return self.execute_and_parse(
-    #         "SetSoundPlay",
-    #         "SetSoundPlayResult",
-    #         self._build_method_envelope(
-    #             "SetSoundPlay",
-    #             f"""
-    #             <ModuleID>1</ModuleID>
-    #             <Controller>1</Controller>
-    #             <SoundType>{Sound.BEEP.value}</SoundType>
-    #             <Volume>{volume}</Volume>
-    #             <Duration>{times}</Duration>
-    #         """,
-    #         ),
-    #     )
-
     def play(self, sound=Sound.EMERGENCY, volume=100, duration=60):
         ret = self.execute_and_parse(
             "SetSoundPlay",
