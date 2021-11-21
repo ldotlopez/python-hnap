@@ -10,9 +10,13 @@ class Sound(enum.Enum):
     DOOR_CHIME = 5
     BEEP = 6
 
+    @classmethod
+    def fromstring(cls, s):
+        return getattr(cls, s.replace('-', '_').upper())
+
 
 class Siren(SoapClient):
-    def get_playing_status(self):
+    def is_playing(self):
         body = self._build_method_envelope(
             "GetSirenAlarmSettings",
             ("<ModuleID>1</ModuleID>" "<Controller>1</Controller>"),
@@ -21,22 +25,6 @@ class Siren(SoapClient):
             "GetSirenAlarmSettings", "IsSounding", body
         )
         return res == "true"
-
-    # def beep(self, times=1, volume=100):
-    #     return self.execute_and_parse(
-    #         "SetSoundPlay",
-    #         "SetSoundPlayResult",
-    #         self._build_method_envelope(
-    #             "SetSoundPlay",
-    #             f"""
-    #             <ModuleID>1</ModuleID>
-    #             <Controller>1</Controller>
-    #             <SoundType>{Sound.BEEP.value}</SoundType>
-    #             <Volume>{volume}</Volume>
-    #             <Duration>{times}</Duration>
-    #         """,
-    #         ),
-    #     )
 
     def play(self, sound=Sound.EMERGENCY, volume=100, duration=60):
         ret = self.execute_and_parse(

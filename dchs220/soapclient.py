@@ -24,18 +24,18 @@ class SoapClient:
         "cookie": "",
         "private_key": "",
         "public_key": "",
-        "pwd": None,
+        "pin": None,
         "result": "",
-        "url": "http://{ip_address}/HNAP1",
+        "url": "http://{hostname}/HNAP1",
         "username": None,
     }
 
-    def __init__(self, ip_address, password, username="admin"):
+    def __init__(self, hostname, pin, username="admin"):
         self._HNAP_AUTH["url"] = self._HNAP_AUTH["url"].format(
-            ip_address=ip_address
+            hostname=hostname
         )
         self._HNAP_AUTH["username"] = username
-        self._HNAP_AUTH["pwd"] = password
+        self._HNAP_AUTH["pin"] = pin
 
     def _build_method_envelope(self, method, parameters):
         return (
@@ -67,7 +67,7 @@ class SoapClient:
             self._HNAP_AUTH[key] = elements[0].firstChild.nodeValue
 
         self._HNAP_AUTH["private_key"] = hex_hmac_md5(
-            self._HNAP_AUTH["public_key"] + self._HNAP_AUTH["pwd"],
+            self._HNAP_AUTH["public_key"] + self._HNAP_AUTH["pin"],
             self._HNAP_AUTH["challenge"],
         ).upper()
 
