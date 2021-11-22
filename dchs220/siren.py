@@ -32,7 +32,11 @@ class Sound(enum.Enum):
 
     @classmethod
     def fromstring(cls, s):
-        return getattr(cls, s.replace("-", "_").upper())
+        s = s.upper()
+        for c in ['-', ' ', '.']:
+            s = s.replace(c, '_')
+
+        return getattr(cls, s)
 
 
 class Siren(SoapClient):
