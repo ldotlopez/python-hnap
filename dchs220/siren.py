@@ -40,6 +40,18 @@ class Sound(enum.Enum):
 
 
 class Siren(SoapClient):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._info = {}
+
+    @property
+    def info(self):
+        return self._info
+
+    def login(self):
+        super().login()
+        self._info.update({})
+
     def is_playing(self):
         body = self._build_method_envelope(
             "GetSirenAlarmSettings",

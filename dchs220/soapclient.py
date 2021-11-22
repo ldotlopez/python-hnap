@@ -158,7 +158,9 @@ class SoapClient:
             method=method, url=url, data=data, headers=headers
         )
         if resp.status_code != 200:
-            raise MethodCallError(resp.status_code, resp.text)
+            raise AuthenticationError(
+                f"Invalid response while login-in: {resp.status_code} "
+                f"({resp.text})")
 
         self._save_login_result(resp.text)
 
