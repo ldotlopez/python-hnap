@@ -19,7 +19,7 @@
 
 
 import enum
-from .soapclient import SoapClient
+from .soapclient import SoapClient, MethodCallError
 
 
 class Sound(enum.Enum):
@@ -65,8 +65,9 @@ class Siren(SoapClient):
             """,
             ),
         )
+
         if ret != "OK":
-            raise Exception(ret)
+            raise MethodCallError(f"Unable to play. Response: {ret}")
 
     def beep(self, volume=100, duration=1):
         return self.play(sound=Sound.BEEP, duration=duration, volume=volume)

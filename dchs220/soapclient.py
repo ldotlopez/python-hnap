@@ -101,7 +101,11 @@ class SoapClient:
         doc = xml.dom.minidom.parseString(body)
         node = doc.getElementsByTagName(element_name)[0]
         if not node or not node.firstChild:
-            raise MethodCallError("invalid response", body)
+            raise MethodCallError(
+                f"Invalid response, unable to find {element_name} element in "
+                f"{body}",
+                body,
+            )
 
         return node.firstChild.nodeValue
 
@@ -123,7 +127,9 @@ class SoapClient:
         )
 
         if resp.status_code != 200:
-            raise MethodCallError("Invalid status code", resp.status_code)
+            raise MethodCallError(
+                f"Invalid status code: {resp.status_code}", resp.status_code
+            )
 
         return self._extract_response(resp.text, response_element)
 
