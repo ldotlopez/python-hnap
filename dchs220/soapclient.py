@@ -44,14 +44,14 @@ class SoapClient:
         "public_key": "",
         "pin": None,
         "result": "",
-        "url": "http://{hostname}/HNAP1",
+        "url": "http://{hostname}:{port}/HNAP1",
         "username": None,
     }
 
-    def __init__(self, hostname, pin, username="admin"):
+    def __init__(self, hostname, pin, username="admin", port=80):
         self.HNAP_AUTH = self.HNAP_AUTH.copy()
         self.HNAP_AUTH["url"] = self.HNAP_AUTH["url"].format(
-            hostname=hostname
+            hostname=hostname, port=port
         )
         self.HNAP_AUTH["username"] = username
         self.HNAP_AUTH["pin"] = pin
