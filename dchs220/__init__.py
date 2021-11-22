@@ -19,4 +19,6 @@
 
 
 from .siren import Siren, Sound
-__all__ = ["Siren", "Sound"]
+from .soapclient import AuthenticationError, MethodCallError
+
+__all__ = ["Siren", "Sound", "AuthenticationError", "MethodCallError"]
