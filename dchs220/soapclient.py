@@ -20,10 +20,16 @@
 
 import hashlib
 import hmac
+import logging
 import time
 import xml.dom.minidom
 
 import requests
+import xmltodict
+
+logging.basicConfig()
+_LOGGER = logging.getLogger("dchs220")
+_LOGGER.setLevel(logging.DEBUG)
 
 
 def hex_hmac_md5(a: str, b: str) -> str:
@@ -56,7 +62,10 @@ class SoapClient:
         self.HNAP_AUTH["username"] = username
         self.HNAP_AUTH["pin"] = pin
 
-    def _build_method_envelope(self, method, parameters):
+    def _build_method_envelope(self, method, **parameters):
+        parameters_xml = "\n".join(
+            [f"     <{k}>{v}</{k}>" for (k, v) in parameters.items()]
+        )
         return (
             '<?xml version="1.0" encoding="utf-8"?>'
             "<soap:Envelope "
@@ -65,7 +74,7 @@ class SoapClient:
             '  xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">'
             "  <soap:Body>"
             f'   <{method} xmlns="{self.HNAP1_XMLNS}">'
-            f"     {parameters}"
+            f"     {parameters_xml}"
             f"   </{method}>"
             "  </soap:Body>"
             "</soap:Envelope>"
@@ -97,19 +106,7 @@ class SoapClient:
 
         return ret
 
-    def _extract_response(self, body, element_name):
-        doc = xml.dom.minidom.parseString(body)
-        node = doc.getElementsByTagName(element_name)[0]
-        if not node or not node.firstChild:
-            raise MethodCallError(
-                f"Invalid response, unable to find {element_name} element in "
-                f"{body}",
-                body,
-            )
-
-        return node.firstChild.nodeValue
-
-    def execute_and_parse(self, method, response_element, body):
+    def call_raw(self, method, **parameters):
         req_url = self.HNAP_AUTH["url"]
         req_method = self.HNAP_METHOD
         req_headers = {
@@ -123,29 +120,40 @@ class SoapClient:
         }
 
         resp = requests.request(
-            method=req_method, url=req_url, headers=req_headers, data=body
+            method=req_method,
+            url=req_url,
+            headers=req_headers,
+            data=self._build_method_envelope(method, **parameters),
         )
 
         if resp.status_code != 200:
             raise MethodCallError(
                 f"Invalid status code: {resp.status_code}", resp.status_code
             )
+        return resp.text
 
-        return self._extract_response(resp.text, response_element)
+    def call(self, method, **parameters):
+        parsed = xmltodict.parse(self.call_raw(method, **parameters))
+        try:
+            res = parsed["soap:Envelope"]["soap:Body"][f"{method}Response"][
+                f"{method}Result"
+            ]
+        except KeyError:
+            _LOGGER.warning(f"Missing {method}Result key")
+        if res.lower() not in ("ok", "success"):
+            _LOGGER.error(f"{method} returned {res}")
+
+        return parsed["soap:Envelope"]["soap:Body"][f"{method}Response"]
 
     def login(self):
-        # Phase 1
-        request_params = (
-            "<Action>request</Action>"
-            "<Username>" + self.HNAP_AUTH["username"] + "</Username>"
-            "<LoginPassword></LoginPassword>"
-            "<Captcha></Captcha>"
-        )
-
         url = self.HNAP_AUTH["url"]
         method = self.HNAP_METHOD
         data = self._build_method_envelope(
-            self.HNAP_LOGIN_METHOD, request_params
+            self.HNAP_LOGIN_METHOD,
+            Action="request",
+            Username=self.HNAP_AUTH["username"],
+            LoginPassword="",
+            Captcha="",
         )
         headers = {
             "Content-Type": "text/xml; charset=utf-8",
@@ -160,7 +168,8 @@ class SoapClient:
         if resp.status_code != 200:
             raise AuthenticationError(
                 f"Invalid response while login-in: {resp.status_code} "
-                f"({resp.text})")
+                f"({resp.text})"
+            )
 
         self._save_login_result(resp.text)
 
@@ -169,21 +178,32 @@ class SoapClient:
             self.HNAP_AUTH["private_key"], self.HNAP_AUTH["challenge"]
         ).upper()
 
-        login_params = (
-            "<Action>login</Action>"
-            "<Username>" + self.HNAP_AUTH["username"] + "</Username>"
-            "<LoginPassword>" + login_password + "</LoginPassword>"
-            "<Captcha></Captcha>"
-        )
-
-        res = self.execute_and_parse(
+        res = self.call(
             self.HNAP_LOGIN_METHOD,
-            "LoginResult",
-            self._build_method_envelope(self.HNAP_LOGIN_METHOD, login_params),
+            Action="Login",
+            Username=self.HNAP_AUTH["username"],
+            LoginPassword=login_password,
+            Captcha="",
         )
 
-        if res != "success":
+        if res["LoginResult"] != "success":
             raise AuthenticationError()
+
+    def device_actions(self):
+        idx = len(self.HNAP1_XMLNS)
+
+        resp = self.call("GetDeviceSettings")
+        actions = resp["SOAPActions"]["string"]
+        actions = (x for x in actions if x.startswith(self.HNAP1_XMLNS))
+        actions = (x[idx:] for x in actions)
+
+        return list(actions)
+
+    def soap_actions(self):
+        resp = self.call("GetModuleSOAPActions", ModuleID=1)
+        actions = resp["ModuleSOAPList"]["SOAPActions"]["Action"]
+
+        return actions
 
 
 class ClientError(Exception):

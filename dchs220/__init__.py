@@ -18,7 +18,14 @@
 # USA.
 
 
-from .siren import Siren, Sound
+from .devices import Motion, Siren, Sound, Water
 from .soapclient import AuthenticationError, MethodCallError
 
-__all__ = ["Siren", "Sound", "AuthenticationError", "MethodCallError"]
+__all__ = [
+    "AuthenticationError",
+    "MethodCallError",
+    "Motion",
+    "Siren",
+    "Sound",
+    "Water",
+]
