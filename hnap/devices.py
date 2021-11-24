@@ -24,7 +24,30 @@ import enum
 from .soapclient import MethodCallError, SoapClient
 
 
-class Motion(SoapClient):
+class _Device(SoapClient):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._device_info = {}
+
+    def login(self):
+        super().login()
+        info = dict(self.call('GetDeviceSettings'))
+        for k in ['@xmlns', 'SOAPActions', 'GetDeviceSettingsResult']:
+            info.pop(k, None)
+
+        try:
+            info['ModuleTypes'] = info['ModuleTypes']['string']
+        except KeyError:
+            pass
+
+        self._device_info = info
+
+    @property
+    def device_info(self):
+        return self._device_info
+
+
+class Motion(_Device):
     def __init__(self, *args, delta=30, **kwargs):
         super().__init__(*args, **kwargs)
         self.delta = delta
@@ -93,19 +116,7 @@ class Sound(enum.Enum):
         return getattr(cls, s)
 
 
-class Siren(SoapClient):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._info = {}
-
-    @property
-    def info(self):
-        return self._info
-
-    def login(self):
-        super().login()
-        self._info.update({})
-
+class Siren(_Device):
     def is_playing(self):
         res = self.call("GetSirenAlarmSettings", ModuleID=1, Controller=1)
         return res["IsSounding"] == "true"
@@ -132,7 +143,7 @@ class Siren(SoapClient):
             raise MethodCallError(f"Unable to stop. Response: {ret}")
 
 
-class Water(SoapClient):
+class Water(_Device):
     def is_active(self):
         ret = self.call("GetWaterDetectorState", ModuleID=1)
         return ret.get("IsWater") == "true"
