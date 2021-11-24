@@ -53,6 +53,29 @@ class Motion(SoapClient):
         return delta <= self.delta
 
 
+class Router(SoapClient):
+    # NOT tested
+    # See https://github.com/waffelheld/dlink-device-tracker/blob/master/custom_components/dlink_device_tracker/dlink_hnap.py#L95
+
+    def get_clients(self):
+        res = await self.call("GetClientInfo", ModuleID=1, Controller=1)
+        clients = res["ClientInfoLists"]["ClientInfo"]
+
+        # Filter out offline clients
+        # clients = [x for x in clients if x["Type"] != "OFFLINE"]
+
+        ret = [
+            {
+                "name": client["DeviceName"],
+                "nickName": client["NickName"],
+                "is_connected": client["Type"] == "OFFLINE" and 0 or 1,
+                "mac": client["MacAddress"],
+            }
+            for client in clients
+        ]
+        return ret
+
+
 class Sound(enum.Enum):
     EMERGENCY = 1
     FIRE = 2

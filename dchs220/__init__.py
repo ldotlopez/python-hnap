@@ -18,13 +18,14 @@
 # USA.
 
 
-from .devices import Motion, Siren, Sound, Water
+from .devices import Motion, Router, Siren, Sound, Water
 from .soapclient import AuthenticationError, MethodCallError
 
 __all__ = [
     "AuthenticationError",
     "MethodCallError",
     "Motion",
+    "Router",
     "Siren",
     "Sound",
     "Water",
