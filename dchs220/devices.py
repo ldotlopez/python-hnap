@@ -58,7 +58,7 @@ class Router(SoapClient):
     # See https://github.com/waffelheld/dlink-device-tracker/blob/master/custom_components/dlink_device_tracker/dlink_hnap.py#L95
 
     def get_clients(self):
-        res = await self.call("GetClientInfo", ModuleID=1, Controller=1)
+        res = self.call("GetClientInfo", ModuleID=1, Controller=1)
         clients = res["ClientInfoLists"]["ClientInfo"]
 
         # Filter out offline clients
