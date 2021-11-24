@@ -21,7 +21,7 @@
 import argparse
 import os
 
-from dchs220 import Siren, Sound
+from . import Siren, Sound
 
 
 def main():

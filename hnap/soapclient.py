@@ -28,7 +28,7 @@ import requests
 import xmltodict
 
 logging.basicConfig()
-_LOGGER = logging.getLogger("dchs220")
+_LOGGER = logging.getLogger(__name__)
 _LOGGER.setLevel(logging.DEBUG)
 
 
