@@ -24,27 +24,44 @@ import enum
 from .soapclient import MethodCallError, SoapClient
 
 
+def DeviceFactory(hostname, password, username="Admin", port=80, **kwargs):
+    device = SoapClient(hostname, password, username, port)
+    device.authenticate()
+    info = device.device_info()
+
+    module_types = info["ModuleTypes"]
+    if not isinstance(module_types, list):
+        module_types = [module_types]
+
+    if "Audio Renderer" in module_types:
+        cls = Siren
+    # 'Optical Recognition', 'Environmental Sensor', 'Camera']
+    elif "Camera" in module_types:
+        cls = Camera
+    elif "Motion Sensor" in module_types:
+        cls = Motion
+    else:
+        raise TypeError(module_types)
+
+    return cls(hostname, password, username=username, port=port, **kwargs)
+
+
 class _Device(SoapClient):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._device_info = {}
+        self._info = None
 
-    def login(self):
-        super().login()
-        info = dict(self.call('GetDeviceSettings'))
-        for k in ['@xmlns', 'SOAPActions', 'GetDeviceSettingsResult']:
-            info.pop(k, None)
-
-        try:
-            info['ModuleTypes'] = info['ModuleTypes']['string']
-        except KeyError:
-            pass
-
-        self._device_info = info
+    def authenticate(self):
+        super().authenticate()
+        self._info = self.device_info()
 
     @property
-    def device_info(self):
-        return self._device_info
+    def info(self):
+        return self._info
+
+
+class Camera(_Device):
+    pass
 
 
 class Motion(_Device):

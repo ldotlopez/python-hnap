@@ -138,14 +138,14 @@ class SoapClient:
             res = parsed["soap:Envelope"]["soap:Body"][f"{method}Response"][
                 f"{method}Result"
             ]
+            if res.lower() not in ("ok", "success"):
+                _LOGGER.error(f"{method} returned {res}")
         except KeyError:
             _LOGGER.warning(f"Missing {method}Result key")
-        if res.lower() not in ("ok", "success"):
-            _LOGGER.error(f"{method} returned {res}")
 
         return parsed["soap:Envelope"]["soap:Body"][f"{method}Response"]
 
-    def login(self):
+    def authenticate(self):
         url = self.HNAP_AUTH["url"]
         method = self.HNAP_METHOD
         data = self._build_method_envelope(
@@ -187,7 +187,19 @@ class SoapClient:
         )
 
         if res["LoginResult"] != "success":
-            raise AuthenticationError()
+            raise AuthenticationError(res["LoginResult"])
+
+    def device_info(self):
+        info = dict(self.call("GetDeviceSettings"))
+        for k in ["@xmlns", "SOAPActions", "GetDeviceSettingsResult"]:
+            info.pop(k, None)
+
+        try:
+            info["ModuleTypes"] = info["ModuleTypes"]["string"]
+        except KeyError:
+            pass
+
+        return info
 
     def device_actions(self):
         idx = len(self.HNAP1_XMLNS)
