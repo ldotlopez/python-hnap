@@ -17,9 +17,9 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
 # USA.
 
-
 from .devices import Camera, DeviceFactory, Motion, Router, Siren, Sound, Water
 from .soapclient import AuthenticationError, MethodCallError
+
 
 __all__ = [
     "AuthenticationError",

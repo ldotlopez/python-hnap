@@ -18,6 +18,7 @@
 # USA.
 
 
+import functools
 import hashlib
 import hmac
 import logging
@@ -48,19 +49,24 @@ class SoapClient:
         "cookie": "",
         "private_key": "",
         "public_key": "",
-        "pin": None,
+        "password": None,
         "result": "",
         "url": "http://{hostname}:{port}/HNAP1",
         "username": None,
     }
 
-    def __init__(self, hostname, pin, username="admin", port=80):
+    def __init__(self, hostname, password, username="admin", port=80):
         self.HNAP_AUTH = self.HNAP_AUTH.copy()
         self.HNAP_AUTH["url"] = self.HNAP_AUTH["url"].format(
             hostname=hostname, port=port
         )
         self.HNAP_AUTH["username"] = username
-        self.HNAP_AUTH["pin"] = pin
+        self.HNAP_AUTH["password"] = password
+        self._authenticated = False
+
+    @property
+    def authenticated(self):
+        return self._authenticated
 
     def _build_method_envelope(self, method, **parameters):
         parameters_xml = "\n".join(
@@ -95,7 +101,7 @@ class SoapClient:
             self.HNAP_AUTH[key] = elements[0].firstChild.nodeValue
 
         self.HNAP_AUTH["private_key"] = hex_hmac_md5(
-            self.HNAP_AUTH["public_key"] + self.HNAP_AUTH["pin"],
+            self.HNAP_AUTH["public_key"] + self.HNAP_AUTH["password"],
             self.HNAP_AUTH["challenge"],
         ).upper()
 
@@ -162,9 +168,11 @@ class SoapClient:
             + self.HNAP_LOGIN_METHOD
             + '"',
         }
+
         resp = requests.request(
             method=method, url=url, data=data, headers=headers
         )
+
         if resp.status_code != 200:
             raise AuthenticationError(
                 f"Invalid response while login-in: {resp.status_code} "
@@ -188,6 +196,8 @@ class SoapClient:
 
         if res["LoginResult"] != "success":
             raise AuthenticationError(res["LoginResult"])
+
+        self._authenticated = True
 
     def device_info(self):
         info = dict(self.call("GetDeviceSettings"))
@@ -228,3 +238,13 @@ class AuthenticationError(ClientError):
 
 class MethodCallError(ClientError):
     pass
+
+
+def auth_required(fn):
+    @functools.wraps(fn)
+    def _wrap(self, *args, **kwargs):
+        if not self._authenticated:
+            self.authenticated()
+        return fn(self, *args, **kwargs)
+
+    return _wrap
