@@ -18,7 +18,6 @@
 # USA.
 
 
-import functools
 import hashlib
 import hmac
 import logging
@@ -56,6 +55,9 @@ class SoapClient:
     }
 
     def __init__(self, hostname, password, username="admin", port=80):
+        self._hostname = hostname
+        self._port = port
+
         self.HNAP_AUTH = self.HNAP_AUTH.copy()
         self.HNAP_AUTH["url"] = self.HNAP_AUTH["url"].format(
             hostname=hostname, port=port
@@ -63,6 +65,22 @@ class SoapClient:
         self.HNAP_AUTH["username"] = username
         self.HNAP_AUTH["password"] = password
         self._authenticated = False
+
+    @property
+    def hostname(self):
+        return self._hostname
+
+    @property
+    def port(self):
+        return self._port
+
+    @property
+    def username(self):
+        return self.HNAP_AUTH["username"]
+
+    @property
+    def password(self):
+        return self.HNAP_AUTH["password"]
 
     @property
     def authenticated(self):
@@ -238,13 +256,3 @@ class AuthenticationError(ClientError):
 
 class MethodCallError(ClientError):
     pass
-
-
-def auth_required(fn):
-    @functools.wraps(fn)
-    def _wrap(self, *args, **kwargs):
-        if not self._authenticated:
-            self.authenticated()
-        return fn(self, *args, **kwargs)
-
-    return _wrap
