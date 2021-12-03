@@ -18,14 +18,14 @@
 # USA.
 
 
-import datetime
-import enum
+import functools
 import logging
+from datetime import datetime
+from enum import Enum
 
 from .soapclient import MethodCallError, SoapClient
 
 _LOGGER = logging.getLogger(__name__)
-import functools
 
 
 def auth_required(fn):
@@ -38,7 +38,7 @@ def auth_required(fn):
     return _wrap
 
 
-class Sound(enum.Enum):
+class Sound(Enum):
     EMERGENCY = 1
     FIRE = 2
     AMBULANCE = 3
@@ -90,10 +90,6 @@ class Device:
         dev = set(info["ModuleTypes"])
         req = set(self.REQUIRED_MODULE_TYPES)
         if not req.issubset(dev):
-            import ipdb
-
-            ipdb.set_trace()
-            pass
             raise TypeError(
                 f"device '{self.client.hostname}' is not a "
                 f"{self.__class__.__name__}",
@@ -146,7 +142,8 @@ class Camera(Device):
         self._base_url = (
             "http://"
             + f"{self.client.username.lower()}:{self.client.password}@"
-            + f"{self.client.hostname}:{self.client.port}")
+            + f"{self.client.hostname}:{self.client.port}"
+        )
 
     @property
     def stream_url(self):
@@ -192,9 +189,9 @@ class Motion(Device):
     @auth_required
     def is_active(self):
         now = datetime.datetime.now()
-        delta = (now - self.get_latest_detection()).total_seconds()
+        diff = (now - self.get_latest_detection()).total_seconds()
 
-        return delta <= self.delta
+        return diff <= self._backoff
 
 
 class Router(Device):
