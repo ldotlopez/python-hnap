@@ -1,5 +1,7 @@
 # Python clients for HNAP devices
 
+[![Upload Python Package](https://github.com/ldotlopez/python-hnap/actions/workflows/python-publish.yml/badge.svg)](https://github.com/ldotlopez/python-hnap/actions/workflows/python-publish.yml)
+
 Generic HNAP client and specialized clients for  motion sensorts, sirens,
 routers, water detectors and more.
 
