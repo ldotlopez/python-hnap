@@ -31,6 +31,8 @@ logging.basicConfig()
 _LOGGER = logging.getLogger(__name__)
 _LOGGER.setLevel(logging.DEBUG)
 
+TIMEOUT = 10
+
 
 def hex_hmac_md5(a: str, b: str) -> str:
     return hmac.new(
@@ -148,6 +150,7 @@ class SoapClient:
             url=req_url,
             headers=req_headers,
             data=self._build_method_envelope(method, **parameters),
+            timeout=TIMEOUT
         )
 
         if resp.status_code != 200:
@@ -188,7 +191,7 @@ class SoapClient:
         }
 
         resp = requests.request(
-            method=method, url=url, data=data, headers=headers
+            method=method, url=url, data=data, headers=headers, timeout=TIMEOUT
         )
 
         if resp.status_code != 200:
