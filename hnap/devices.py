@@ -22,6 +22,7 @@ import functools
 import logging
 from datetime import datetime
 from enum import Enum
+import warnings
 
 from .soapclient import MethodCallError, SoapClient
 
@@ -31,8 +32,9 @@ _LOGGER = logging.getLogger(__name__)
 def auth_required(fn):
     @functools.wraps(fn)
     def _wrap(self, *args, **kwargs):
-        if not self.authenticated:
-            self.authenticate()
+        if not self.client.authenticated:
+            self.client.authenticate()
+            _LOGGER.debug("Device authenticated")
         return fn(self, *args, **kwargs)
 
     return _wrap
@@ -73,38 +75,46 @@ class Device:
         self._info = None
 
     def authenticate(self):
+        # TODO: Delete this method in next major version
+        warnings.warn("Device.authenticate() is deprecated")
+
         self.client.authenticate()
-
-        info = dict(self.client.call("GetDeviceSettings"))
-        for k in ["@xmlns", "SOAPActions", "GetDeviceSettingsResult"]:
-            info.pop(k, None)
-
-        try:
-            info["ModuleTypes"] = info["ModuleTypes"]["string"]
-        except KeyError:
-            info["ModuleTypes"] = []
-
-        if isinstance(info["ModuleTypes"], str):
-            info["ModuleTypes"] = [info["ModuleTypes"]]
-
-        dev = set(info["ModuleTypes"])
-        req = set(self.REQUIRED_MODULE_TYPES)
-        if not req.issubset(dev):
-            raise TypeError(
-                f"device '{self.client.hostname}' is not a "
-                f"{self.__class__.__name__}",
-            )
-
-        self._info = info
 
     @property
     def authenticated(self):
-        return self._info is not None
+        # TODO: Delete this method in next major version
+        warnings.warn("Device.authenticated is deprecated")
+
+        return self.client.authenticated
 
     @property
     def info(self):
-        if not self.authenticated:
-            self.authenticate()
+        if self._info is None:
+            if not self.client.authenticated:
+                self.client.authenticate()
+
+            info = dict(self.client.call("GetDeviceSettings"))
+            for k in ["@xmlns", "SOAPActions", "GetDeviceSettingsResult"]:
+                info.pop(k, None)
+
+            try:
+                info["ModuleTypes"] = info["ModuleTypes"]["string"]
+            except KeyError:
+                info["ModuleTypes"] = []
+
+            if isinstance(info["ModuleTypes"], str):
+                info["ModuleTypes"] = [info["ModuleTypes"]]
+
+            dev = set(info["ModuleTypes"])
+            req = set(self.REQUIRED_MODULE_TYPES)
+            if not req.issubset(dev):
+                raise TypeError(
+                    f"device '{self.client.hostname}' is not a "
+                    f"{self.__class__.__name__}",
+                )
+
+            self._info = info
+
         return self._info
 
 
@@ -196,7 +206,7 @@ class Motion(Device):
 
 class Router(Device):
     # NOT tested
-    # See https://github.com/waffelheld/dlink-device-tracker/blob/master/custom_components/dlink_device_tracker/dlink_hnap.py#L95
+    # See https://github.com/waffelheld/dlink-device-tracker/blob/master/custom_components/dlink_device_tracker/dlink_hnap.py#L95  # noqa: E501
     REQUIRED_MODULE_TYPES = ["check-module-types-for-router"]
 
     @auth_required
