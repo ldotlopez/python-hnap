@@ -56,9 +56,17 @@ class SoapClient:
         "username": None,
     }
 
-    def __init__(self, hostname, password, username="admin", port=80):
+    def __init__(
+        self,
+        hostname,
+        password,
+        username="admin",
+        port=80,
+        session_lifetime=3600,
+    ):
         self._hostname = hostname
         self._port = port
+        self._session_lifetime = session_lifetime
 
         self.HNAP_AUTH = self.HNAP_AUTH.copy()
         self.HNAP_AUTH["url"] = self.HNAP_AUTH["url"].format(
@@ -66,7 +74,7 @@ class SoapClient:
         )
         self.HNAP_AUTH["username"] = username
         self.HNAP_AUTH["password"] = password
-        self._authenticated = False
+        self._authenticated = 0
 
     @property
     def hostname(self):
@@ -86,7 +94,9 @@ class SoapClient:
 
     @property
     def authenticated(self):
-        return self._authenticated
+        return (self._authenticated > 0) and (
+            (time.monotonic() - self._authenticated) <= self._session_lifetime
+        )
 
     def _build_method_envelope(self, method, **parameters):
         parameters_xml = "\n".join(
@@ -150,7 +160,7 @@ class SoapClient:
             url=req_url,
             headers=req_headers,
             data=self._build_method_envelope(method, **parameters),
-            timeout=TIMEOUT
+            timeout=TIMEOUT,
         )
 
         if resp.status_code != 200:
@@ -218,7 +228,7 @@ class SoapClient:
         if res["LoginResult"] != "success":
             raise AuthenticationError(res["LoginResult"])
 
-        self._authenticated = True
+        self._authenticated = time.monotonic()
 
     def device_info(self):
         info = dict(self.call("GetDeviceSettings"))
