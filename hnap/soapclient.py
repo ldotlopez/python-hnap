@@ -51,6 +51,7 @@ class SoapClient:
         "password": None,
         "result": "",
         "url": "http://{hostname}:{port}/HNAP1",
+        "url_alternate": "http://{hostname}/HNAP1/",
         "username": None,
     }
 
@@ -70,6 +71,9 @@ class SoapClient:
 
         self.HNAP_AUTH = self.HNAP_AUTH.copy()
         self.HNAP_AUTH["url"] = self.HNAP_AUTH["url"].format(
+            hostname=hostname, port=port
+        )
+        self.HNAP_AUTH["url_alternate"] = self.HNAP_AUTH["url_alternate"].format(
             hostname=hostname, port=port
         )
         self.HNAP_AUTH["username"] = username
@@ -208,6 +212,18 @@ class SoapClient:
             timeout=self._request_timeout,
         )
 
+        # Use of alternate url needed for Router device
+        if resp.status_code == 500:
+            resp = requests.request(
+                method=method,
+                url=self.HNAP_AUTH["url_alternate"],
+                data=data,
+                headers=headers,
+                timeout=self._request_timeout,
+            )
+            if resp.status_code == 200:
+                self.HNAP_AUTH["url"] = self.HNAP_AUTH["url_alternate"]
+
         if resp.status_code != 200:
             raise AuthenticationError(
                 f"Invalid response while login-in: {resp.status_code} "
@@ -223,7 +239,7 @@ class SoapClient:
 
         res = self.call(
             self.HNAP_LOGIN_METHOD,
-            Action="Login",
+            Action="login",
             Username=self.HNAP_AUTH["username"],
             LoginPassword=login_password,
             Captcha="",

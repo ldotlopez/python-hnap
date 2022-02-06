@@ -211,7 +211,7 @@ class Router(Device):
 
     @auth_required
     def get_clients(self):
-        res = self.call("GetClientInfo", ModuleID=1, Controller=1)
+        res = self.client.call("GetClientInfo", ModuleID=1, Controller=1)
         clients = res["ClientInfoLists"]["ClientInfo"]
 
         # Filter out offline clients
