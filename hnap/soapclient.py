@@ -50,7 +50,7 @@ class SoapClient:
         "public_key": "",
         "password": None,
         "result": "",
-        "url": "http://{hostname}:{port}/HNAP1",
+        "url": "http://{hostname}:{port}/HNAP1/",
         "username": None,
     }
 
@@ -223,7 +223,7 @@ class SoapClient:
 
         res = self.call(
             self.HNAP_LOGIN_METHOD,
-            Action="Login",
+            Action="login",
             Username=self.HNAP_AUTH["username"],
             LoginPassword=login_password,
             Captcha="",
