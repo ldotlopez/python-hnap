@@ -20,52 +20,88 @@
 
 import argparse
 import os
+import pprint
+import sys
+import xml.dom.minidom
 
-from . import Siren, Sound
+import requests  # type: ignore[import]
+
+from .soapclient import SoapClient
+
+OUTPUT_TMPL = """
+Device info
+===========
+{info}
+
+Device actions
+==============
+{device_actions}
+
+SOAP actions
+==============
+{soap_actions}
+"""
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--hostname", required=True)
     parser.add_argument(
-        "--pin", default=os.environ.get("SCHS220_PIN", ""), required=True
+        "--password",
+        default=os.environ.get("HNAP_PASSWORD", ""),
+        required=True,
     )
     parser.add_argument("--username", default="admin")
-
-    subparser = parser.add_subparsers(dest="command")
-    beep = subparser.add_parser("beep")
-    play = subparser.add_parser("play")
-    status = subparser.add_parser("status")  # noqa
-    stop = subparser.add_parser("stop")  # noqa
-
-    beep.add_argument("-v", "--volume", default=1, type=int)
-    play.add_argument("-v", "--volume", default=1, type=int)
-    play.add_argument("-s", "--sound", default="beep", type=str)
-    play.add_argument("-d", "--duration", default=5, type=int)
-
+    parser.add_argument("--call", nargs=1, default=[])
+    parser.add_argument("--params", nargs=2, action="append", default=[])
     args = parser.parse_args()
 
-    siren = Siren(hostname=args.hostname, pin=args.pin)
-    siren.login()
+    if len(args.call) > 1:
+        print("Error: Only on call is allowed", file=sys.stderr)
+        return 1
 
-    if args.command == "beep":
-        siren.beep(volume=args.volume)
+    client = SoapClient(
+        hostname=args.hostname,
+        username=args.username,
+        password=args.password,
+    )
 
-    elif args.command == "play":
-        siren.play(
-            sound=Sound.fromstring(args.sound),
-            volume=args.volume,
-            duration=args.duration,
+    try:
+        client.authenticate()
+
+    except requests.ReadTimeout:
+        print(
+            f"{args.hostname}: read timeout error "
+            "(Is device stuck? try rebooting it)",
+            file=sys.stderr,
         )
+        sys.exit(1)
+    except requests.ConnectionError:
+        print(
+            f"{args.hostname}: connection error "
+            "(offline device? wrong hostname?)",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
-    elif args.command == "status":
-        print("playing" if siren.is_playing() else "not playing")
+    if args.call:
+        params = dict(args.params)
+        resp = client.call_raw(args.call[0], **params)
+        if not resp:
+            print("Empty (or unsupported) response")
+            return
 
-    elif args.command == "stop":
-        siren.stop()
+        dom = xml.dom.minidom.parseString(resp)
+        print(dom.toprettyxml())
 
     else:
-        parser.print_help()
+        print(
+            OUTPUT_TMPL.format(
+                info=pprint.pformat(client.device_info()),
+                soap_actions=pprint.pformat(client.soap_actions()),
+                device_actions=pprint.pformat(client.device_actions()),
+            ).strip()
+        )
 
 
 if __name__ == "__main__":
