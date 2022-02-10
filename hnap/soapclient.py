@@ -18,14 +18,15 @@
 # USA.
 
 
+import functools
 import hashlib
 import hmac
 import logging
 import time
 import xml.dom.minidom
 
-import requests
-import xmltodict
+import requests  # type: ignore[import]
+import xmltodict  # type: ignore[import]
 
 logging.basicConfig()
 _LOGGER = logging.getLogger(__name__)
@@ -36,6 +37,17 @@ def hex_hmac_md5(a: str, b: str) -> str:
     return hmac.new(
         a.encode("ascii"), b.encode("ascii"), hashlib.md5
     ).hexdigest()
+
+
+def auth_required(fn):
+    @functools.wraps(fn)
+    def _wrap(soapclient, *args, **kwargs):
+        if not soapclient.authenticated:
+            soapclient.authenticate()
+            _LOGGER.debug("Device authenticated")
+        return fn(soapclient, *args, **kwargs)
+
+    return _wrap
 
 
 class SoapClient:
@@ -182,7 +194,11 @@ class SoapClient:
 
         return parsed["soap:Envelope"]["soap:Body"][f"{method}Response"]
 
-    def authenticate(self):
+    def authenticate(self, force=False):
+        if self.authenticated and not force:
+            _LOGGER.debug("Client already authenticated")
+            return
+
         url = self.HNAP_AUTH["url"]
         method = self.HNAP_METHOD
         data = self._build_method_envelope(
@@ -234,6 +250,14 @@ class SoapClient:
 
         self._authenticated = time.monotonic()
 
+    @auth_required
+    def soap_actions(self):
+        resp = self.call("GetModuleSOAPActions", ModuleID=1)
+        actions = resp["ModuleSOAPList"]["SOAPActions"]["Action"]
+
+        return actions
+
+    @auth_required
     def device_info(self):
         info = dict(self.call("GetDeviceSettings"))
         for k in ["@xmlns", "SOAPActions", "GetDeviceSettingsResult"]:
@@ -246,6 +270,7 @@ class SoapClient:
 
         return info
 
+    @auth_required
     def device_actions(self):
         idx = len(self.HNAP1_XMLNS)
 
@@ -255,12 +280,6 @@ class SoapClient:
         actions = (x[idx:] for x in actions)
 
         return list(actions)
-
-    def soap_actions(self):
-        resp = self.call("GetModuleSOAPActions", ModuleID=1)
-        actions = resp["ModuleSOAPList"]["SOAPActions"]["Action"]
-
-        return actions
 
 
 class ClientError(Exception):

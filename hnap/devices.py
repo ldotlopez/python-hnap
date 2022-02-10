@@ -31,11 +31,11 @@ _LOGGER = logging.getLogger(__name__)
 
 def auth_required(fn):
     @functools.wraps(fn)
-    def _wrap(self, *args, **kwargs):
-        if not self.client.authenticated:
-            self.client.authenticate()
+    def _wrap(device, *args, **kwargs):
+        if not device.client.authenticated:
+            device.client.authenticate()
             _LOGGER.debug("Device authenticated")
-        return fn(self, *args, **kwargs)
+        return fn(device, *args, **kwargs)
 
     return _wrap
 
@@ -72,50 +72,22 @@ class Device:
         self.client = client or SoapClient(
             hostname=hostname, password=password, username=username, port=port
         )
-        self._info = None
 
-    def authenticate(self):
-        # TODO: Delete this method in next major version
-        warnings.warn("Device.authenticate() is deprecated")
+    # def get_info(self):
+    #     info = self.client.device_info()
 
-        self.client.authenticate()
+    #     if isinstance(info["ModuleTypes"], str):
+    #         info["ModuleTypes"] = [info["ModuleTypes"]]
 
-    @property
-    def authenticated(self):
-        # TODO: Delete this method in next major version
-        warnings.warn("Device.authenticated is deprecated")
+    #     dev = set(info["ModuleTypes"])
+    #     req = set(self.REQUIRED_MODULE_TYPES)
+    #     if not req.issubset(dev):
+    #         raise TypeError(
+    #             f"device '{self.client.hostname}' is not a "
+    #             f"{self.__class__.__name__}",
+    #         )
 
-        return self.client.authenticated
-
-    @property
-    def info(self):
-        if self._info is None:
-            if not self.client.authenticated:
-                self.client.authenticate()
-
-            info = dict(self.client.call("GetDeviceSettings"))
-            for k in ["@xmlns", "SOAPActions", "GetDeviceSettingsResult"]:
-                info.pop(k, None)
-
-            try:
-                info["ModuleTypes"] = info["ModuleTypes"]["string"]
-            except KeyError:
-                info["ModuleTypes"] = []
-
-            if isinstance(info["ModuleTypes"], str):
-                info["ModuleTypes"] = [info["ModuleTypes"]]
-
-            dev = set(info["ModuleTypes"])
-            req = set(self.REQUIRED_MODULE_TYPES)
-            if not req.issubset(dev):
-                raise TypeError(
-                    f"device '{self.client.hostname}' is not a "
-                    f"{self.__class__.__name__}",
-                )
-
-            self._info = info
-
-        return self._info
+    #     return info
 
 
 def DeviceFactory(
@@ -124,7 +96,6 @@ def DeviceFactory(
     client = client or SoapClient(
         hostname=hostname, password=password, username=username, port=port
     )
-    client.authenticate()
     info = client.device_info()
 
     module_types = info["ModuleTypes"]
@@ -173,6 +144,13 @@ class Motion(Device):
 
     @property
     def backoff(self):
+        if self._backoff is None:
+            self._backoff = int(
+                self.client.call("GetMotionDetectorSettings", ModuleID=1)[
+                    "Backoff"
+                ]
+            )
+
         return self._backoff
 
     # @backoff.setter
@@ -182,26 +160,26 @@ class Motion(Device):
     #     )
     #     _LOGGER.warning("set backoff property has no effect")
 
-    def authenticate(self):
-        super().authenticate()
+    # def authenticate(self):
+    #     super().authenticate()
 
-        res = self.client.call("GetMotionDetectorSettings", ModuleID=1)
-        try:
-            self._backoff = int(res["Backoff"])
-        except (ValueError, TypeError, KeyError):
-            _LOGGER.warning("Unable to get delta from device")
+    #     res = self.client.call("GetMotionDetectorSettings", ModuleID=1)
+    #     try:
+    #         self._backoff = int(res["Backoff"])
+    #     except (ValueError, TypeError, KeyError):
+    #         _LOGGER.warning("Unable to get delta from device")
 
     @auth_required
     def get_latest_detection(self):
         res = self.client.call("GetLatestDetection", ModuleID=1)
-        return datetime.datetime.fromtimestamp(float(res["LatestDetectTime"]))
+        return datetime.fromtimestamp(float(res["LatestDetectTime"]))
 
     @auth_required
     def is_active(self):
-        now = datetime.datetime.now()
+        now = datetime.now()
         diff = (now - self.get_latest_detection()).total_seconds()
 
-        return diff <= self._backoff
+        return diff <= self.backoff
 
 
 class Router(Device):
@@ -254,9 +232,7 @@ class Siren(Device):
 
     @auth_required
     def beep(self, volume=100, duration=1):
-        return self.client.play(
-            sound=Sound.BEEP, duration=duration, volume=volume
-        )
+        return self.play(sound=Sound.BEEP, duration=duration, volume=volume)
 
     @auth_required
     def stop(self):
