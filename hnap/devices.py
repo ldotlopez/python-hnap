@@ -128,11 +128,13 @@ class Motion(Device):
     @property
     def backoff(self):
         if self._backoff is None:
-            self._backoff = int(
-                self.client.call("GetMotionDetectorSettings", ModuleID=1)[
-                    "Backoff"
-                ]
-            )
+            resp = self.client.call("GetMotionDetectorSettings", ModuleID=1)
+            try:
+                self._backoff = int(resp["Backoff"])
+            except (KeyError, ValueError, TypeError):
+                # Return the default value for tested devices but don't store
+                # to force retry
+                return 30
 
         return self._backoff
 
