@@ -40,21 +40,29 @@ def auth_required(fn):
     return _wrap
 
 
-class Sound(Enum):
-    EMERGENCY = 1
-    FIRE = 2
-    AMBULANCE = 3
-    POLICE = 4
-    DOOR_CHIME = 5
-    BEEP = 6
+def DeviceFactory(
+    *, client=None, hostname=None, password=None, username="Admin", port=80
+):
+    client = client or SoapClient(
+        hostname=hostname, password=password, username=username, port=port
+    )
+    info = client.device_info()
 
-    @classmethod
-    def fromstring(cls, s):
-        s = s.upper()
-        for c in ["-", " ", "."]:
-            s = s.replace(c, "_")
+    module_types = info["ModuleTypes"]
+    if not isinstance(module_types, list):
+        module_types = [module_types]
 
-        return getattr(cls, s)
+    if "Audio Renderer" in module_types:
+        cls = Siren
+    # 'Optical Recognition', 'Environmental Sensor', 'Camera']
+    elif "Camera" in module_types:
+        cls = Camera
+    elif "Motion Sensor" in module_types:
+        cls = Motion
+    else:
+        raise TypeError(module_types)
+
+    return cls(client=client)
 
 
 class Device:
@@ -88,31 +96,6 @@ class Device:
     #         )
 
     #     return info
-
-
-def DeviceFactory(
-    *, client=None, hostname=None, password=None, username="Admin", port=80
-):
-    client = client or SoapClient(
-        hostname=hostname, password=password, username=username, port=port
-    )
-    info = client.device_info()
-
-    module_types = info["ModuleTypes"]
-    if not isinstance(module_types, list):
-        module_types = [module_types]
-
-    if "Audio Renderer" in module_types:
-        cls = Siren
-    # 'Optical Recognition', 'Environmental Sensor', 'Camera']
-    elif "Camera" in module_types:
-        cls = Camera
-    elif "Motion Sensor" in module_types:
-        cls = Motion
-    else:
-        raise TypeError(module_types)
-
-    return cls(client=client)
 
 
 class Camera(Device):
@@ -207,6 +190,23 @@ class Router(Device):
         return ret
 
 
+class SirenSound(Enum):
+    EMERGENCY = 1
+    FIRE = 2
+    AMBULANCE = 3
+    POLICE = 4
+    DOOR_CHIME = 5
+    BEEP = 6
+
+    @classmethod
+    def fromstring(cls, s):
+        s = s.upper()
+        for c in ["-", " ", "."]:
+            s = s.replace(c, "_")
+
+        return getattr(cls, s)
+
+
 class Siren(Device):
     REQUIRED_MODULE_TYPES = ["Audio Renderer"]
 
@@ -216,7 +216,7 @@ class Siren(Device):
         return res["IsSounding"] == "true"
 
     @auth_required
-    def play(self, sound=Sound.EMERGENCY, volume=100, duration=60):
+    def play(self, sound=SirenSound.EMERGENCY, volume=100, duration=60):
         ret = self.client.call(
             "SetSoundPlay",
             ModuleID=1,
@@ -230,7 +230,7 @@ class Siren(Device):
 
     @auth_required
     def beep(self, volume=100, duration=1):
-        return self.play(sound=Sound.BEEP, duration=duration, volume=volume)
+        return self.play(sound=SirenSound.BEEP, duration=duration, volume=volume)
 
     @auth_required
     def stop(self):
