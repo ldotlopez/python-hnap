@@ -28,9 +28,7 @@ import xml.dom.minidom
 import requests  # type: ignore[import]
 import xmltodict  # type: ignore[import]
 
-logging.basicConfig()
 _LOGGER = logging.getLogger(__name__)
-_LOGGER.setLevel(logging.DEBUG)
 
 
 def hex_hmac_md5(a: str, b: str) -> str:
@@ -42,7 +40,7 @@ def auth_required(fn):
     def _wrap(soapclient, *args, **kwargs):
         if not soapclient.authenticated:
             soapclient.authenticate()
-            _LOGGER.debug("Device authenticated")
+            _LOGGER.debug("SoapClient authenticated")
         return fn(soapclient, *args, **kwargs)
 
     return _wrap

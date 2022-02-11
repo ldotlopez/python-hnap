@@ -19,6 +19,7 @@
 
 
 import argparse
+import logging
 import os
 import pprint
 import sys
@@ -44,6 +45,9 @@ SOAP actions
 
 
 def main():
+    logging.basicConfig()
+    logging.getLogger("hnap").setLevel(logging.DEBUG)
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--hostname", required=True)
     parser.add_argument(
