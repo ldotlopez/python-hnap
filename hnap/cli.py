@@ -25,7 +25,7 @@ import pprint
 import sys
 import xml.dom.minidom
 
-import requests  # type: ignore[import]
+import requests
 
 from .soapclient import SoapClient
 

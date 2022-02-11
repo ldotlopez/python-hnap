@@ -22,7 +22,6 @@ import functools
 import logging
 from datetime import datetime
 from enum import Enum
-import warnings
 
 from .soapclient import MethodCallError, SoapClient
 

@@ -25,8 +25,8 @@ import logging
 import time
 import xml.dom.minidom
 
-import requests  # type: ignore[import]
-import xmltodict  # type: ignore[import]
+import requests
+import xmltodict
 
 _LOGGER = logging.getLogger(__name__)
 
