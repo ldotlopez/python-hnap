@@ -34,9 +34,7 @@ _LOGGER.setLevel(logging.DEBUG)
 
 
 def hex_hmac_md5(a: str, b: str) -> str:
-    return hmac.new(
-        a.encode("ascii"), b.encode("ascii"), hashlib.md5
-    ).hexdigest()
+    return hmac.new(a.encode("ascii"), b.encode("ascii"), hashlib.md5).hexdigest()
 
 
 def auth_required(fn):
@@ -210,10 +208,7 @@ class SoapClient:
         )
         headers = {
             "Content-Type": "text/xml; charset=utf-8",
-            "SOAPAction": '"'
-            + self.HNAP1_XMLNS
-            + self.HNAP_LOGIN_METHOD
-            + '"',
+            "SOAPAction": '"' + self.HNAP1_XMLNS + self.HNAP_LOGIN_METHOD + '"',
         }
 
         resp = requests.request(
@@ -226,8 +221,7 @@ class SoapClient:
 
         if resp.status_code != 200:
             raise AuthenticationError(
-                f"Invalid response while login-in: {resp.status_code} "
-                f"({resp.text})"
+                f"Invalid response while login: {resp.status_code} ({resp.text})"
             )
 
         self._save_login_result(resp.text)

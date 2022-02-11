@@ -78,8 +78,7 @@ def main():
         sys.exit(1)
     except requests.ConnectionError:
         print(
-            f"{args.hostname}: connection error "
-            "(offline device? wrong hostname?)",
+            f"{args.hostname}: connection error (offline device? wrong hostname?)",
             file=sys.stderr,
         )
         sys.exit(1)

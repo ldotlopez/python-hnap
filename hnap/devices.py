@@ -212,9 +212,7 @@ class Siren(Device):
 
     @auth_required
     def is_playing(self):
-        res = self.client.call(
-            "GetSirenAlarmSettings", ModuleID=1, Controller=1
-        )
+        res = self.client.call("GetSirenAlarmSettings", ModuleID=1, Controller=1)
         return res["IsSounding"] == "true"
 
     @auth_required
