@@ -173,7 +173,7 @@ class Router(Device):
 
     @auth_required
     def get_clients(self):
-        res = self.call("GetClientInfo", ModuleID=1, Controller=1)
+        res = self.client.call("GetClientInfo", ModuleID=1, Controller=1)
         clients = res["ClientInfoLists"]["ClientInfo"]
 
         # Filter out offline clients
@@ -247,5 +247,5 @@ class Water(Device):
 
     @auth_required
     def is_active(self):
-        ret = self.call("GetWaterDetectorState", ModuleID=1)
+        ret = self.client.call("GetWaterDetectorState", ModuleID=1)
         return ret.get("IsWater") == "true"
