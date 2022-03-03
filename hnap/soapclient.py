@@ -184,9 +184,10 @@ class SoapClient:
                 f"{method}Result"
             ]
             if res.lower() not in ("ok", "success"):
-                _LOGGER.error(f"{method} returned {res}")
+                raise MethodCallError(f"{method} returned {res}")
+
         except KeyError:
-            _LOGGER.warning(f"Missing {method}Result key")
+            raise MethodCallError(f"Missing {method}Result key")
 
         return parsed["soap:Envelope"]["soap:Body"][f"{method}Response"]
 
