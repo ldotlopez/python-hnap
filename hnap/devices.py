@@ -22,6 +22,7 @@ import functools
 import logging
 from datetime import datetime
 from enum import Enum
+from typing import List
 
 from .soapclient import MethodCallError, SoapClient
 
@@ -65,7 +66,7 @@ def DeviceFactory(
 
 
 class Device:
-    REQUIRED_MODULE_TYPES: list[str] = []
+    REQUIRED_MODULE_TYPES: List[str] = []
 
     def __init__(
         self,
