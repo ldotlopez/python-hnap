@@ -22,7 +22,6 @@ import functools
 import logging
 from datetime import datetime
 from enum import Enum
-from typing import List
 
 from .soapclient import MethodCallError, SoapClient
 
@@ -66,7 +65,7 @@ def DeviceFactory(
 
 
 class Device:
-    REQUIRED_MODULE_TYPES: List[str] = []
+    MODULE_TYPE: str
 
     def __init__(
         self,
@@ -80,6 +79,34 @@ class Device:
         self.client = client or SoapClient(
             hostname=hostname, password=password, username=username, port=port
         )
+        self._info = None
+        self._module_id = None
+        self._controller = None
+
+    @property
+    def info(self):
+        if not self._info:
+            self._info = self.client.device_info()
+
+        return self._info
+
+    @property
+    def module_id(self):
+        if not self._module_id:
+            self._module_id = self.info["ModuleTypes"].find(self.MODULE_TYPE) + 1
+
+        return self._module_id
+
+    @property
+    def controller(self):
+        # NOTE: not sure about this
+        return self.module_id
+
+    def call(self, *args, **kwargs):
+        kwargs["ModuleID"] = kwargs.get("ModuleID") or self.module_id
+        kwargs["Controller"] = kwargs.get("Controller") or self.controller
+
+        return self.client.call(*args, **kwargs)
 
     # def get_info(self):
     #     info = self.client.device_info()
@@ -99,7 +126,7 @@ class Device:
 
 
 class Camera(Device):
-    REQUIRED_MODULE_TYPES = ["Camera"]
+    MODULE_TYPE = "Camera"
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -119,7 +146,7 @@ class Camera(Device):
 
 
 class Motion(Device):
-    REQUIRED_MODULE_TYPES = ["Motion Sensor"]
+    MODULE_TYPE = "Motion Sensor"
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -128,7 +155,7 @@ class Motion(Device):
     @property
     def backoff(self):
         if self._backoff is None:
-            resp = self.client.call("GetMotionDetectorSettings", ModuleID=1)
+            resp = self.call("GetMotionDetectorSettings")
             try:
                 self._backoff = int(resp["Backoff"])
             except (KeyError, ValueError, TypeError):
@@ -156,7 +183,7 @@ class Motion(Device):
 
     @auth_required
     def get_latest_detection(self):
-        res = self.client.call("GetLatestDetection", ModuleID=1)
+        res = self.call("GetLatestDetection")
         return datetime.fromtimestamp(float(res["LatestDetectTime"]))
 
     @auth_required
@@ -170,11 +197,11 @@ class Motion(Device):
 class Router(Device):
     # NOT tested
     # See https://github.com/waffelheld/dlink-device-tracker/blob/master/custom_components/dlink_device_tracker/dlink_hnap.py#L95  # noqa: E501
-    REQUIRED_MODULE_TYPES = ["check-module-types-for-router"]
+    MODULE_TYPE = "check-module-types-for-router"
 
     @auth_required
     def get_clients(self):
-        res = self.client.call("GetClientInfo", ModuleID=1, Controller=1)
+        res = self.call("GetClientInfo")
         clients = res["ClientInfoLists"]["ClientInfo"]
 
         # Filter out offline clients
@@ -210,19 +237,17 @@ class SirenSound(Enum):
 
 
 class Siren(Device):
-    REQUIRED_MODULE_TYPES = ["Audio Renderer"]
+    MODULE_TYPE = "Audio Renderer"
 
     @auth_required
     def is_playing(self):
-        res = self.client.call("GetSirenAlarmSettings", ModuleID=1, Controller=1)
+        res = self.call("GetSirenAlarmSettings")
         return res["IsSounding"] == "true"
 
     @auth_required
     def play(self, sound=SirenSound.EMERGENCY, volume=100, duration=60):
-        ret = self.client.call(
+        ret = self.call(
             "SetSoundPlay",
-            ModuleID=1,
-            Controller=1,
             SoundType=sound.value,
             Volume=volume,
             Duration=duration,
@@ -236,7 +261,7 @@ class Siren(Device):
 
     @auth_required
     def stop(self):
-        ret = self.client.call("SetAlarmDismissed", ModuleID=1, Controller=1)
+        ret = self.call("SetAlarmDismissed")
 
         if ret["SetAlarmDismissedResult"] != "OK":
             raise MethodCallError(f"Unable to stop. Response: {ret}")
@@ -244,9 +269,9 @@ class Siren(Device):
 
 class Water(Device):
     # NOT tested
-    REQUIRED_MODULE_TYPES = ["check-module-types-for-water-detector"]
+    MODULE_TYPE = "check-module-types-for-water-detector"
 
     @auth_required
     def is_active(self):
-        ret = self.client.call("GetWaterDetectorState", ModuleID=1)
+        ret = self.call("GetWaterDetectorState")
         return ret.get("IsWater") == "true"
