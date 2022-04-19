@@ -49,15 +49,41 @@ def main():
     logging.getLogger("hnap").setLevel(logging.DEBUG)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--hostname", required=True)
+    parser.add_argument(
+        "--hostname",
+        required=True,
+        metavar="hostname",
+    )
     parser.add_argument(
         "--password",
-        default=os.environ.get("HNAP_PASSWORD", ""),
         required=True,
+        metavar="password",
+        default=os.environ.get("HNAP_PASSWORD", ""),
     )
-    parser.add_argument("--username", default="admin")
-    parser.add_argument("--call", nargs=1, default=[])
-    parser.add_argument("--params", nargs=2, action="append", default=[])
+    parser.add_argument(
+        "--username",
+        default="admin",
+        metavar="username",
+    )
+    parser.add_argument(
+        "--call",
+        nargs=1,
+        default=[],
+        metavar="MethodName",
+        help=(
+            "If you are calling a SOAP action you must pass, at least, "
+            "`--param Module 1` and, maybe, `--param Controller 1`."
+        ),
+    )
+    parser.add_argument(
+        "--param",
+        action="append",
+        nargs=2,
+        default=[],
+        dest="params",
+        metavar=("ParamName", "Value"),
+        help="Params to pass to call. Multiple params can be passed.",
+    )
     args = parser.parse_args()
 
     if len(args.call) > 1:
