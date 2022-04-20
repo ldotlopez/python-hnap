@@ -14,3 +14,4 @@ routers, water detectors and more.
   * https://github.com/waffelheld/dlink-device-tracker
   * https://github.com/bikerp/dsp-w215-hnap
   * https://github.com/postlund/dlink_hnap
+  * API for smart plugs: https://github.com/bikerp/dsp-w215-hnap/blob/master/js/soapclient.js

@@ -29,6 +29,7 @@ import requests
 
 from .soapclient import SoapClient
 
+
 OUTPUT_TMPL = """
 Device info
 ===========
@@ -38,9 +39,9 @@ Device actions
 ==============
 {device_actions}
 
-SOAP actions
+Module actions
 ==============
-{soap_actions}
+{module_actions}
 """
 
 
@@ -86,10 +87,6 @@ def main():
     )
     args = parser.parse_args()
 
-    if len(args.call) > 1:
-        print("Error: Only on call is allowed", file=sys.stderr)
-        return 1
-
     client = SoapClient(
         hostname=args.hostname,
         username=args.username,
@@ -127,8 +124,8 @@ def main():
         print(
             OUTPUT_TMPL.format(
                 info=pprint.pformat(client.device_info()),
-                soap_actions=pprint.pformat(client.soap_actions()),
                 device_actions=pprint.pformat(client.device_actions()),
+                module_actions=pprint.pformat(client.module_actions()),
             ).strip()
         )
 

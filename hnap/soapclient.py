@@ -28,22 +28,20 @@ import xml.dom.minidom
 import requests
 import xmltodict
 
+from .const import (
+    DEFAULT_MODULE_ID,
+    DEFAULT_PORT,
+    DEFAULT_REQUEST_TIMEOUT,
+    DEFAULT_SESSION_LIFETIME,
+    DEFAULT_USERNAME,
+)
+from .helpers import auth_required
+
 _LOGGER = logging.getLogger(__name__)
 
 
 def hex_hmac_md5(a: str, b: str) -> str:
     return hmac.new(a.encode("ascii"), b.encode("ascii"), hashlib.md5).hexdigest()
-
-
-def auth_required(fn):
-    @functools.wraps(fn)
-    def _wrap(soapclient, *args, **kwargs):
-        if not soapclient.authenticated:
-            soapclient.authenticate()
-            _LOGGER.debug("SoapClient authenticated")
-        return fn(soapclient, *args, **kwargs)
-
-    return _wrap
 
 
 class SoapClient:
@@ -66,10 +64,10 @@ class SoapClient:
         self,
         hostname,
         password,
-        username="admin",
-        port=80,
-        request_timeout=10,
-        session_lifetime=3600,
+        username=DEFAULT_USERNAME,
+        port=DEFAULT_PORT,
+        request_timeout=DEFAULT_REQUEST_TIMEOUT,
+        session_lifetime=DEFAULT_SESSION_LIFETIME,
     ):
         self._hostname = hostname
         self._port = port
@@ -99,12 +97,6 @@ class SoapClient:
     @property
     def password(self):
         return self.HNAP_AUTH["password"]
-
-    @property
-    def authenticated(self):
-        return (self._authenticated > 0) and (
-            (time.monotonic() - self._authenticated) <= self._session_lifetime
-        )
 
     def _build_method_envelope(self, method, **parameters):
         parameters_xml = "\n".join(
@@ -192,7 +184,7 @@ class SoapClient:
         return parsed["soap:Envelope"]["soap:Body"][f"{method}Response"]
 
     def authenticate(self, force=False):
-        if self.authenticated and not force:
+        if self.is_authenticated() and not force:
             _LOGGER.debug("Client already authenticated")
             return
 
@@ -243,36 +235,64 @@ class SoapClient:
 
         self._authenticated = time.monotonic()
 
-    @auth_required
-    def soap_actions(self):
-        resp = self.call("GetModuleSOAPActions", ModuleID=1)
-        actions = resp["ModuleSOAPList"]["SOAPActions"]["Action"]
+    def is_authenticated(self):
+        return (self._authenticated > 0) and (
+            (time.monotonic() - self._authenticated) <= self._session_lifetime
+        )
 
-        return actions
+    def _inspect_device(self, **kwargs):
+        def _unwrap_string_ordered_dict(data):
+            ret = []
 
-    @auth_required
-    def device_info(self):
-        info = dict(self.call("GetDeviceSettings"))
-        for k in ["@xmlns", "SOAPActions", "GetDeviceSettingsResult"]:
-            info.pop(k, None)
+            for (modtype, modname) in data.items():
+                if modtype != "string":
+                    _LOGGER.warning(f"Unknow type class: ({modtype}, {modname}")
+                    continue
 
-        try:
-            info["ModuleTypes"] = info["ModuleTypes"]["string"]
-        except KeyError:
-            pass
+                if isinstance(modname, str):
+                    ret.append(modname)
+
+                elif isinstance(modname, list):
+                    ret.extend(modname)
+                else:
+                    _LOGGER.error(f"Unknow value instance: ({modname!r}")
+
+            return ret
+
+        info = dict(self.call("GetDeviceSettings", **kwargs))
+
+        # Rewrite some keys
+        info["ModuleTypes"] = _unwrap_string_ordered_dict(info["ModuleTypes"])
+        info["SOAPActions"] = _unwrap_string_ordered_dict(info["SOAPActions"])
 
         return info
 
     @auth_required
-    def device_actions(self):
+    def device_info(self, **kwargs):
+        info = self._inspect_device(**kwargs)
+
+        for k in ["@xmlns", "SOAPActions", "GetDeviceSettingsResult"]:
+            info.pop(k, None)
+
+        return info
+
+    @auth_required
+    def device_actions(self, **kwargs):
         idx = len(self.HNAP1_XMLNS)
 
-        resp = self.call("GetDeviceSettings")
-        actions = resp["SOAPActions"]["string"]
+        info = self._inspect_device(**kwargs)
+        actions = info["SOAPActions"]
         actions = (x for x in actions if x.startswith(self.HNAP1_XMLNS))
         actions = (x[idx:] for x in actions)
 
         return list(actions)
+
+    @auth_required
+    def module_actions(self, *, ModuleID=DEFAULT_MODULE_ID, **kwargs):
+        resp = self.call("GetModuleSOAPActions", ModuleID=ModuleID, **kwargs)
+        actions = resp["ModuleSOAPList"]["SOAPActions"]["Action"]
+
+        return actions
 
 
 class ClientError(Exception):

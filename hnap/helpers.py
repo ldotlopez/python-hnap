@@ -17,28 +17,15 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
 # USA.
 
-from .devices import (
-    Camera,
-    Device,
-    DeviceFactory,
-    Motion,
-    Router,
-    Siren,
-    SirenSound,
-    Water,
-)
-from .soapclient import AuthenticationError, MethodCallError, SoapClient
+import functools
 
-__all__ = [
-    "AuthenticationError",
-    "MethodCallError",
-    "Device",
-    "DeviceFactory",
-    "Camera",
-    "Motion",
-    "Router",
-    "Siren",
-    "SirenSound",
-    "SoapClient",
-    "Water",
-]
+
+def auth_required(fn):
+    @functools.wraps(fn)
+    def _wrap(access, *args, **kwargs):
+        if not access.is_authenticated():
+            access.authenticate()
+
+        return fn(access, *args, **kwargs)
+
+    return _wrap

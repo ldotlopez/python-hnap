@@ -18,29 +18,25 @@
 # USA.
 
 
-import functools
 import logging
 from datetime import datetime
 from enum import Enum
 
+from .const import DEFAULT_USERNAME, DEFAULT_MODULE_ID, DEFAULT_PORT
 from .soapclient import MethodCallError, SoapClient
+from .helpers import auth_required
+
 
 _LOGGER = logging.getLogger(__name__)
 
 
-def auth_required(fn):
-    @functools.wraps(fn)
-    def _wrap(device, *args, **kwargs):
-        if not device.client.authenticated:
-            device.client.authenticate()
-            _LOGGER.debug("Device authenticated")
-        return fn(device, *args, **kwargs)
-
-    return _wrap
-
-
 def DeviceFactory(
-    *, client=None, hostname=None, password=None, username="Admin", port=80
+    *,
+    client=None,
+    hostname=None,
+    password=None,
+    username=DEFAULT_USERNAME,
+    port=DEFAULT_PORT,
 ):
     client = client or SoapClient(
         hostname=hostname, password=password, username=username, port=port
@@ -53,11 +49,15 @@ def DeviceFactory(
 
     if "Audio Renderer" in module_types:
         cls = Siren
-    # 'Optical Recognition', 'Environmental Sensor', 'Camera']
+
     elif "Camera" in module_types:
+        # Other posible values for camera (needs testing):
+        # 'Optical Recognition', 'Environmental Sensor', 'Camera'
         cls = Camera
+
     elif "Motion Sensor" in module_types:
         cls = Motion
+
     else:
         raise TypeError(module_types)
 
@@ -73,15 +73,16 @@ class Device:
         client=None,
         hostname=None,
         password=None,
-        username="Admin",
-        port=80,
+        username=DEFAULT_USERNAME,
+        port=DEFAULT_PORT,
+        module_id=DEFAULT_MODULE_ID,
     ):
         self.client = client or SoapClient(
             hostname=hostname, password=password, username=username, port=port
         )
+        self.module_id = module_id
+
         self._info = None
-        self._module_id = None
-        self._controller = None
 
     @property
     def info(self):
@@ -90,59 +91,38 @@ class Device:
 
         return self._info
 
-    @property
-    def module_id(self):
-        if not self._module_id:
-            self._module_id = self.info["ModuleTypes"].find(self.MODULE_TYPE) + 1
-
-        return self._module_id
-
-    @property
-    def controller(self):
-        # NOTE: not sure about this
-        return self.module_id
-
     def call(self, *args, **kwargs):
-        kwargs["ModuleID"] = kwargs.get("ModuleID") or self.module_id
-        kwargs["Controller"] = kwargs.get("Controller") or self.controller
-
+        kwargs["ModuleID"] = self.module_id
         return self.client.call(*args, **kwargs)
 
-    # def get_info(self):
-    #     info = self.client.device_info()
+    def is_authenticated(self):
+        return self.client.is_authenticated()
 
-    #     if isinstance(info["ModuleTypes"], str):
-    #         info["ModuleTypes"] = [info["ModuleTypes"]]
-
-    #     dev = set(info["ModuleTypes"])
-    #     req = set(self.REQUIRED_MODULE_TYPES)
-    #     if not req.issubset(dev):
-    #         raise TypeError(
-    #             f"device '{self.client.hostname}' is not a "
-    #             f"{self.__class__.__name__}",
-    #         )
-
-    #     return info
+    def authenticate(self):
+        return self.client.authenticate()
 
 
 class Camera(Device):
     MODULE_TYPE = "Camera"
+    DEFAULT_SCHEMA = "http://"
+    DEFAULT_STREAM_PATH = "/play1.sdp"
+    DEFAULT_PICTURE_PATH = "/image/jpeg.cgi"
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._base_url = (
-            "http://"
+            {self.DEFAULT_SCHEMA}
             + f"{self.client.username.lower()}:{self.client.password}@"
             + f"{self.client.hostname}:{self.client.port}"
         )
 
     @property
     def stream_url(self):
-        return f"{self._base_url}/play1.sdp"
+        return f"{self._base_url}{self.DEFAULT_STREAM_PATH}"
 
     @property
     def picture_url(self):
-        return f"{self._base_url}/image/jpeg.cgi"
+        return f"{self._base_url}{self.DEFAULT_PICTURE_PATH}"
 
 
 class Motion(Device):
@@ -167,15 +147,15 @@ class Motion(Device):
 
     # @backoff.setter
     # def backoff(self, seconds):
-    #     self.client.call(
-    #         "SetMotionDetectorSettings", ModuleID=1, Backoff=self._backoff
+    #     self.call(
+    #         "SetMotionDetectorSettings", Backoff=self._backoff
     #     )
     #     _LOGGER.warning("set backoff property has no effect")
 
     # def authenticate(self):
     #     super().authenticate()
 
-    #     res = self.client.call("GetMotionDetectorSettings", ModuleID=1)
+    #     res = self.call("GetMotionDetectorSettings")
     #     try:
     #         self._backoff = int(res["Backoff"])
     #     except (ValueError, TypeError, KeyError):

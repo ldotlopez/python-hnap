@@ -17,28 +17,9 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
 # USA.
 
-from .devices import (
-    Camera,
-    Device,
-    DeviceFactory,
-    Motion,
-    Router,
-    Siren,
-    SirenSound,
-    Water,
-)
-from .soapclient import AuthenticationError, MethodCallError, SoapClient
 
-__all__ = [
-    "AuthenticationError",
-    "MethodCallError",
-    "Device",
-    "DeviceFactory",
-    "Camera",
-    "Motion",
-    "Router",
-    "Siren",
-    "SirenSound",
-    "SoapClient",
-    "Water",
-]
+DEFAULT_MODULE_ID = "1"
+DEFAULT_PORT = 80
+DEFAULT_REQUEST_TIMEOUT = 10
+DEFAULT_SESSION_LIFETIME = 3600
+DEFAULT_USERNAME = "admin"
