@@ -1,7 +1,9 @@
 # Python clients for HNAP devices
 
 <!-- Code and releases -->
-![GitHub Release (latest SemVer including pre-releases)](https://img.shields.io/github/v/release/ldotlopez/python-hnap?include_prereleases)
+[![GitHub Release](https://img.shields.io/github/v/release/ldotlopez/ha-hnap-device?include_prereleases)](https://github.com/ldotlopez/python-hnap/releases)
+
+[![Upload Python Package](https://github.com/ldotlopez/python-hnap/actions/workflows/python-publish.yml/badge.svg)](https://github.com/ldotlopez/python-hnap/actions/workflows/python-publish.yml)
 [![CodeQL](https://github.com/ldotlopez/python-hnap/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/ldotlopez/python-hnap/actions/workflows/codeql-analysis.yml)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/ambv/black)
 
