@@ -122,7 +122,7 @@ class SoapClient:
             f"{self.HNAP_LOGIN_METHOD}Result"
         )[0].firstChild.nodeValue
 
-        for (tag, key) in [
+        for tag, key in [
             ("Challenge", "challenge"),
             ("PublicKey", "public_key"),
             ("Cookie", "cookie"),
@@ -244,7 +244,7 @@ class SoapClient:
         def _unwrap_string_ordered_dict(data):
             ret = []
 
-            for (modtype, modname) in data.items():
+            for modtype, modname in data.items():
                 if modtype != "string":
                     _LOGGER.warning(f"Unknow type class: ({modtype}, {modname}")
                     continue
@@ -262,7 +262,13 @@ class SoapClient:
         info = dict(self.call("GetDeviceSettings", **kwargs))
 
         # Rewrite some keys
-        info["ModuleTypes"] = _unwrap_string_ordered_dict(info["ModuleTypes"])
+
+        # Rewrite some keys
+        info["ModuleTypes"] = (
+            _unwrap_string_ordered_dict(info["ModuleTypes"])
+            if "ModuleTypes" in info
+            else []
+        )
         info["SOAPActions"] = _unwrap_string_ordered_dict(info["SOAPActions"])
 
         return info
