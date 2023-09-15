@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 #
 # Copyright (C) 2021 Luis López <luis@cuarentaydos.com>
 #
@@ -28,7 +27,6 @@ import xml.dom.minidom
 import requests
 
 from .soapclient import SoapClient
-
 
 OUTPUT_TMPL = """
 Device info

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 #
 # Copyright (C) 2021 Luis López <luis@cuarentaydos.com>
 #
@@ -22,10 +21,9 @@ import logging
 from datetime import datetime
 from enum import Enum
 
-from .const import DEFAULT_USERNAME, DEFAULT_MODULE_ID, DEFAULT_PORT
-from .soapclient import MethodCallError, SoapClient
+from .const import DEFAULT_MODULE_ID, DEFAULT_PORT, DEFAULT_USERNAME
 from .helpers import auth_required
-
+from .soapclient import MethodCallError, SoapClient
 
 _LOGGER = logging.getLogger(__name__)
 

@@ -9,6 +9,9 @@ xmltodict = ">=0.12.0"
 
 [dev-packages]
 types-requests = ">=2.27.11"
+ipython = "*"
+ipdb = "*"
+pre-commit = "*"
 
 [requires]
-python_version = "3"
+python_version = "3.11"
