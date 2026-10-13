@@ -16,10 +16,12 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
 # USA.
 
+from .config import DeviceConfig
 from .devices import (
     Camera,
     Device,
     DeviceFactory,
+    DeviceType,
     Motion,
     Router,
     Siren,
@@ -30,10 +32,12 @@ from .soapclient import AuthenticationError, MethodCallError, SoapClient
 
 __all__ = [
     "AuthenticationError",
-    "MethodCallError",
-    "Device",
-    "DeviceFactory",
     "Camera",
+    "Device",
+    "DeviceConfig",
+    "DeviceFactory",
+    "DeviceType",
+    "MethodCallError",
     "Motion",
     "Router",
     "Siren",

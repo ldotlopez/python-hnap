@@ -26,6 +26,7 @@ import xml.dom.minidom
 
 import requests
 
+from .config import DeviceConfig
 from .soapclient import SoapClient
 
 OUTPUT_TMPL = """
@@ -85,11 +86,12 @@ def main():
     )
     args = parser.parse_args()
 
-    client = SoapClient(
+    config = DeviceConfig(
         hostname=args.hostname,
-        username=args.username,
         password=args.password,
+        username=args.username,
     )
+    client = SoapClient(config)
 
     try:
         client.authenticate()

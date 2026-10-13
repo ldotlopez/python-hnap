@@ -17,23 +17,18 @@
 # USA.
 
 
-import functools
 import hashlib
 import hmac
 import logging
 import time
 import xml.dom.minidom
+from typing import ClassVar
 
 import requests
 import xmltodict
 
-from .const import (
-    DEFAULT_MODULE_ID,
-    DEFAULT_PORT,
-    DEFAULT_REQUEST_TIMEOUT,
-    DEFAULT_SESSION_LIFETIME,
-    DEFAULT_USERNAME,
-)
+from .config import DeviceConfig
+from .const import DEFAULT_MODULE_ID
 from .helpers import auth_required
 
 _LOGGER = logging.getLogger(__name__)
@@ -48,7 +43,7 @@ class SoapClient:
     HNAP_METHOD = "POST"
     HNAP_BODY_ENCODING = "UTF8"
     HNAP_LOGIN_METHOD = "Login"
-    HNAP_AUTH = {
+    HNAP_AUTH: ClassVar[dict[str, str | None]] = {
         "challenge": "",
         "cookie": "",
         "private_key": "",
@@ -59,26 +54,22 @@ class SoapClient:
         "username": None,
     }
 
-    def __init__(
-        self,
-        hostname,
-        password,
-        username=DEFAULT_USERNAME,
-        port=DEFAULT_PORT,
-        request_timeout=DEFAULT_REQUEST_TIMEOUT,
-        session_lifetime=DEFAULT_SESSION_LIFETIME,
-    ):
+    def __init__(self, config: DeviceConfig):
+        if not isinstance(config, DeviceConfig):
+            raise TypeError("config must be a DeviceConfig")
+        self.config = config
+        hostname = config.hostname
         self._hostname = hostname
-        self._port = port
-        self._request_timeout = request_timeout
-        self._session_lifetime = session_lifetime
+        self._port = config.port
+        self._request_timeout = config.request_timeout
+        self._session_lifetime = config.session_lifetime
 
         self.HNAP_AUTH = self.HNAP_AUTH.copy()
         self.HNAP_AUTH["url"] = self.HNAP_AUTH["url"].format(
-            hostname=hostname, port=port
+            hostname=hostname, port=config.port
         )
-        self.HNAP_AUTH["username"] = username
-        self.HNAP_AUTH["password"] = password
+        self.HNAP_AUTH["username"] = config.username
+        self.HNAP_AUTH["password"] = config.password
         self._authenticated = 0
 
     @property
@@ -151,7 +142,7 @@ class SoapClient:
                 f'"{self.HNAP1_XMLNS}{method}"',
                 self.HNAP_AUTH["private_key"],
             ),
-            "Cookie": "uid=" + self.HNAP_AUTH["cookie"],
+            "Cookie": f"uid={self.HNAP_AUTH['cookie']}",
         }
 
         resp = requests.request(

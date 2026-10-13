@@ -21,65 +21,40 @@ import logging
 from datetime import datetime
 from enum import Enum
 
-from .const import DEFAULT_MODULE_ID, DEFAULT_PORT, DEFAULT_USERNAME
+from .config import DeviceConfig
+from .const import DEFAULT_MODULE_ID
 from .helpers import auth_required
 from .soapclient import MethodCallError, SoapClient
 
 _LOGGER = logging.getLogger(__name__)
 
 
-def DeviceFactory(
-    *,
-    client=None,
-    hostname=None,
-    password=None,
-    username=DEFAULT_USERNAME,
-    port=DEFAULT_PORT,
-):
-    client = client or SoapClient(
-        hostname=hostname, password=password, username=username, port=port
-    )
-    info = client.device_info()
-
-    module_types = info["ModuleTypes"]
-    if not isinstance(module_types, list):
-        module_types = [module_types]
-
-    if "Audio Renderer" in module_types:
-        cls = Siren
-
-    elif "Camera" in module_types:
-        # Other posible values for camera (needs testing):
-        # 'Optical Recognition', 'Environmental Sensor', 'Camera'
-        cls = Camera
-
-    elif "Motion Sensor" in module_types:
-        cls = Motion
-
-    else:
-        raise TypeError(module_types)
-
-    return cls(client=client)
+class DeviceType(Enum):
+    CAMERA = "camera"
+    MOTION = "motion"
+    ROUTER = "router"
+    SIREN = "siren"
+    WATER = "water"
 
 
 class Device:
     MODULE_TYPE: str
+    DEVICE_TYPE: DeviceType | None = None
 
     def __init__(
         self,
+        config: DeviceConfig,
         *,
         client=None,
-        hostname=None,
-        password=None,
-        username=DEFAULT_USERNAME,
-        port=DEFAULT_PORT,
         module_id=DEFAULT_MODULE_ID,
     ):
-        self.client = client or SoapClient(
-            hostname=hostname, password=password, username=username, port=port
-        )
-        self.module_id = module_id
+        if not isinstance(config, DeviceConfig):
+            raise TypeError("config must be a DeviceConfig")
 
+        self.config = config
+        self.client = client or SoapClient(config)
+        self.module_id = module_id
+        self.device_type = self.DEVICE_TYPE
         self._info = None
 
     @property
@@ -99,9 +74,17 @@ class Device:
     def authenticate(self):
         return self.client.authenticate()
 
+    def reconnect(self):
+        """Replace the SOAP client after authenticating a fresh connection."""
+        client = SoapClient(self.config)
+        client.authenticate()
+        self.client = client
+        self._info = None
+
 
 class Camera(Device):
     MODULE_TYPE = "Camera"
+    DEVICE_TYPE = DeviceType.CAMERA
     DEFAULT_SCHEMA = "http://"
     DEFAULT_STREAM_PATH = "/play1.sdp"
     DEFAULT_PICTURE_PATH = "/image/jpeg.cgi"
@@ -125,6 +108,7 @@ class Camera(Device):
 
 class Motion(Device):
     MODULE_TYPE = "Motion Sensor"
+    DEVICE_TYPE = DeviceType.MOTION
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -173,6 +157,7 @@ class Motion(Device):
 
 
 class Router(Device):
+    DEVICE_TYPE = DeviceType.ROUTER
     # NOT tested
     # See https://github.com/waffelheld/dlink-device-tracker/blob/master/custom_components/dlink_device_tracker/dlink_hnap.py#L95  # noqa: E501
     MODULE_TYPE = "check-module-types-for-router"
@@ -216,6 +201,7 @@ class SirenSound(Enum):
 
 class Siren(Device):
     MODULE_TYPE = "Audio Renderer"
+    DEVICE_TYPE = DeviceType.SIREN
 
     @auth_required
     def is_playing(self):
@@ -248,8 +234,68 @@ class Siren(Device):
 class Water(Device):
     # NOT tested
     MODULE_TYPE = "check-module-types-for-water-detector"
+    DEVICE_TYPE = DeviceType.WATER
 
     @auth_required
     def is_active(self):
         ret = self.call("GetWaterDetectorState")
         return ret.get("IsWater") == "true"
+
+
+_DEVICE_CLASSES = {
+    DeviceType.CAMERA: Camera,
+    DeviceType.MOTION: Motion,
+    DeviceType.ROUTER: Router,
+    DeviceType.SIREN: Siren,
+    DeviceType.WATER: Water,
+}
+
+_DISCOVERY_TYPES = {
+    "Audio Renderer": DeviceType.SIREN,
+    "Camera": DeviceType.CAMERA,
+    "Motion Sensor": DeviceType.MOTION,
+}
+
+
+def DeviceFactory(
+    device_type: DeviceType | None = None,
+    *,
+    config: DeviceConfig,
+    module_id: str = DEFAULT_MODULE_ID,
+) -> Device:
+    """Create a specified device without discovery, or discover its type if None."""
+    if not isinstance(config, DeviceConfig):
+        raise TypeError("config must be a DeviceConfig")
+    if device_type is not None:
+        if not isinstance(device_type, DeviceType):
+            raise TypeError("device_type must be a DeviceType or None")
+    client = SoapClient(config)
+    if device_type is not None:
+        device = _DEVICE_CLASSES[device_type](
+            config, client=client, module_id=module_id
+        )
+        device.device_type = device_type
+        return device
+
+    info = client.device_info()
+    module_types = info.get("ModuleTypes", [])
+    if isinstance(module_types, str):
+        module_types = [module_types]
+    elif not isinstance(module_types, list):
+        raise TypeError(f"Invalid ModuleTypes value: {module_types!r}")
+
+    device_type = next(
+        (
+            _DISCOVERY_TYPES[module_type]
+            for module_type in _DISCOVERY_TYPES
+            if module_type in module_types
+        ),
+        None,
+    )
+    if device_type is None:
+        raise TypeError(f"Unsupported device module types: {module_types!r}")
+
+    device = _DEVICE_CLASSES[device_type](config, client=client, module_id=module_id)
+    device.device_type = device_type
+    device._info = info
+    return device
