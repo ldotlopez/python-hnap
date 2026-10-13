@@ -36,3 +36,8 @@ classifiers = [
 
 [project.scripts]
 hnap = "hnap.cli:main"
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.7.0",
+]
