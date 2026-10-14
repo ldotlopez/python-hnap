@@ -44,7 +44,13 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "$GITHUB_REF_NAME" dist/* --generate-notes --repo "$GITHUB_REPOSITORY"
+        run: |
+          tag="${GITHUB_REF_NAME,,}"
+          args=(--generate-notes --repo "$GITHUB_REPOSITORY")
+          if [[ "$tag" =~ (^|[0-9._-])(alpha|beta|preview|pre|rc|a|b)[0-9]*([.+-]|$) ]]; then
+            args+=(--prerelease)
+          fi
+          gh release create "$GITHUB_REF_NAME" dist/* "${args[@]}"
 
   publish:
     needs: release
