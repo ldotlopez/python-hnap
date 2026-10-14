@@ -19,7 +19,7 @@ dependencies = [
     "importlib-metadata; python_version >= '3.11'",
 ]
 authors = [
-  { name="Luis Lopez", email=" luis@cuarentaydos.com" },
+  { name="Luis Lopez", email="luis@cuarentaydos.com" },
 ]
 description = "Python clients for HNAP devices"
 readme = "README.md"

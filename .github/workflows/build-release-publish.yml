@@ -1,4 +1,4 @@
-name: Create Release
+name: Build, release and publish Python package
 
 on:
   push:
