@@ -10,34 +10,57 @@
 <!-- Sponsors -->
 <a href="https://www.buymeacoffee.com/zepolson" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 30px !important;width: 105px !important;" ></a>
 
-Generic HNAP client and specialized clients for  motion sensorts, sirens,
+Generic HNAP client and specialized clients for motion sensors, sirens,
 routers, water detectors and more.
 
-## Creating and reconnecting devices
+## Async devices
 
-Pass a `DeviceType` to construct a known device without querying it first.
-Pass `None` (or omit the type) to discover the device through HNAP:
+All network operations are asynchronous. Pass a `DeviceType` to construct a
+known device without querying it first, or omit the type to discover the
+concrete device:
 
 ```python
+import asyncio
+
+import aiohttp
 from hnap import DeviceConfig, DeviceFactory, DeviceType
 
 config = DeviceConfig(hostname="192.0.2.10", password="secret")
 
-# No discovery request is made during construction.
-device = DeviceFactory(DeviceType.SIREN, config=config)
 
-# Autodiscovery makes a request to determine the concrete device class.
-discovered_device = DeviceFactory(None, config=config)
+async def main():
+    async with aiohttp.ClientSession() as http_client:
+        siren = await DeviceFactory(
+            DeviceType.SIREN, config=config, http_client=http_client
+        )
+        await siren.authenticate()
+        await siren.soap_client.call("GetSirenAlarmSettings")
+
+        discovered = await DeviceFactory(config=config)
+        async with discovered:
+            await discovered.reconnect()
+
+
+asyncio.run(main())
 ```
 
-`DeviceConfig` is the single way to provide connection settings and retains
-them independently of the client's authentication state. After a connection
-is lost, call `device.reconnect()` on the existing instance. It authenticates
-a fresh SOAP client before replacing the current one, preserves the device
-class and module ID, and does not repeat type discovery. A failed reconnect
-leaves the current client in place. Operations are not automatically retried
-after transport errors because the device may have completed an action even
-if its response was lost.
+`DeviceConfig` retains connection settings independently of authentication
+state. `await device.reconnect()` authenticates a fresh SOAP client before
+replacing the current one, preserves the device class and module ID, and does
+not repeat type discovery. A failed reconnect leaves the current client in
+place. Operations are not retried after transport errors because the device
+may have completed an action even if its response was lost.
+
+`SoapClient` creates an `aiohttp.ClientSession` when `await client.start()` is
+called, when the client or device is entered as an async context manager, or
+before its first network request. Sessions created by HNAP are closed by
+`await client.close()` or on context-manager exit. You can instead supply an
+existing session via `http_client`; caller-supplied sessions remain
+caller-owned and are not closed by the SOAP client or device.
+
+Device operations such as `is_playing()`, `play()`, `beep()`, and
+`get_clients()` must be awaited. Cached device information is retrieved with
+`await device.get_info()`.
 
 **Useful links**
 

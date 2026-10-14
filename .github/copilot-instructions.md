@@ -14,7 +14,7 @@
 
 ## Architecture
 
-- `hnap/soapclient.py` is the protocol layer. `SoapClient` builds HNAP SOAP XML requests, sends them over HTTP with `requests`, parses XML responses with `xmltodict`, performs the two-stage HNAP login, and discovers device information and available actions.
+- `hnap/soapclient.py` is the protocol layer. `SoapClient` builds HNAP SOAP XML requests, sends them over HTTP with `aiohttp`, parses XML responses with `xmltodict`, performs the two-stage HNAP login, and discovers device information and available actions.
 - `hnap/devices.py` builds the higher-level device API on top of `SoapClient`. `Device` delegates calls to the client and adds the module ID; specialized classes expose operations for cameras, motion sensors, routers, sirens, and water detectors. `DeviceFactory(DeviceType, ...)` constructs a known class without discovery; `DeviceFactory(None, ...)` currently discovers Audio Renderer, Camera, and Motion Sensor devices over HNAP.
 - `hnap/config.py` defines immutable `DeviceConfig` connection settings. It is the single connection-settings input to device construction and `SoapClient`. `Device.reconnect()` authenticates a new client before swapping it into the existing device; it reuses the resolved type and module ID without rediscovery.
 - `hnap/helpers.py` contains the `auth_required` decorator used by protected device and client operations to authenticate an expired or unauthenticated session before proceeding.

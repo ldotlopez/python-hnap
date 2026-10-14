@@ -18,13 +18,14 @@
 
 
 import argparse
+import asyncio
 import logging
 import os
 import pprint
 import sys
 import xml.dom.minidom
 
-import requests
+import aiohttp
 
 from .config import DeviceConfig
 from .soapclient import SoapClient
@@ -44,7 +45,7 @@ Module actions
 """
 
 
-def main():
+async def _main():
     logging.basicConfig()
     logging.getLogger("hnap").setLevel(logging.DEBUG)
 
@@ -91,43 +92,46 @@ def main():
         password=args.password,
         username=args.username,
     )
-    client = SoapClient(config)
+    async with SoapClient(config) as client:
+        try:
+            await client.authenticate()
 
-    try:
-        client.authenticate()
+        except aiohttp.SocketTimeoutError:
+            print(
+                f"{args.hostname}: read timeout error "
+                "(Is device stuck? try rebooting it)",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        except (aiohttp.ClientConnectionError, aiohttp.ConnectionTimeoutError):
+            print(
+                f"{args.hostname}: connection error (offline device? wrong hostname?)",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
-    except requests.ReadTimeout:
-        print(
-            f"{args.hostname}: read timeout error "
-            "(Is device stuck? try rebooting it)",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    except requests.ConnectionError:
-        print(
-            f"{args.hostname}: connection error (offline device? wrong hostname?)",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+        if args.call:
+            params = dict(args.params)
+            resp = await client.call_raw(args.call[0], **params)
+            if not resp:
+                print("Empty (or unsupported) response")
+                return
 
-    if args.call:
-        params = dict(args.params)
-        resp = client.call_raw(args.call[0], **params)
-        if not resp:
-            print("Empty (or unsupported) response")
-            return
+            dom = xml.dom.minidom.parseString(resp)
+            print(dom.toprettyxml())
 
-        dom = xml.dom.minidom.parseString(resp)
-        print(dom.toprettyxml())
+        else:
+            print(
+                OUTPUT_TMPL.format(
+                    info=pprint.pformat(await client.device_info()),
+                    device_actions=pprint.pformat(await client.device_actions()),
+                    module_actions=pprint.pformat(await client.module_actions()),
+                ).strip()
+            )
 
-    else:
-        print(
-            OUTPUT_TMPL.format(
-                info=pprint.pformat(client.device_info()),
-                device_actions=pprint.pformat(client.device_actions()),
-                module_actions=pprint.pformat(client.module_actions()),
-            ).strip()
-        )
+
+def main():
+    asyncio.run(_main())
 
 
 if __name__ == "__main__":

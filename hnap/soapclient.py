@@ -12,10 +12,8 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
-# USA.
-
+# along with this program; if not, write to the Free Software Foundation,
+# Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 
 import hashlib
 import hmac
@@ -24,7 +22,7 @@ import time
 import xml.dom.minidom
 from typing import ClassVar
 
-import requests
+import aiohttp
 import xmltodict
 
 from .config import DeviceConfig
@@ -54,19 +52,24 @@ class SoapClient:
         "username": None,
     }
 
-    def __init__(self, config: DeviceConfig):
+    def __init__(
+        self,
+        config: DeviceConfig,
+        *,
+        http_client: aiohttp.ClientSession | None = None,
+    ):
         if not isinstance(config, DeviceConfig):
             raise TypeError("config must be a DeviceConfig")
+        self.http_client = http_client
+        self._owns_http_client = http_client is None
         self.config = config
-        hostname = config.hostname
-        self._hostname = hostname
+        self._hostname = config.hostname
         self._port = config.port
         self._request_timeout = config.request_timeout
         self._session_lifetime = config.session_lifetime
-
         self.HNAP_AUTH = self.HNAP_AUTH.copy()
         self.HNAP_AUTH["url"] = self.HNAP_AUTH["url"].format(
-            hostname=hostname, port=config.port
+            hostname=config.hostname, port=config.port
         )
         self.HNAP_AUTH["username"] = config.username
         self.HNAP_AUTH["password"] = config.password
@@ -88,9 +91,14 @@ class SoapClient:
     def password(self):
         return self.HNAP_AUTH["password"]
 
+    async def start(self) -> aiohttp.ClientSession:
+        if self.http_client is None:
+            self.http_client = aiohttp.ClientSession()
+        return self.http_client
+
     def _build_method_envelope(self, method, **parameters):
         parameters_xml = "\n".join(
-            [f"     <{k}>{v}</{k}>" for (k, v) in parameters.items()]
+            [f"     <{key}>{value}</{key}>" for key, value in parameters.items()]
         )
         return (
             '<?xml version="1.0" encoding="utf-8"?>'
@@ -111,184 +119,163 @@ class SoapClient:
         self.HNAP_AUTH["result"] = doc.getElementsByTagName(
             f"{self.HNAP_LOGIN_METHOD}Result"
         )[0].firstChild.nodeValue
-
-        for tag, key in [
+        for tag, key in (
             ("Challenge", "challenge"),
             ("PublicKey", "public_key"),
             ("Cookie", "cookie"),
-        ]:
+        ):
             elements = doc.getElementsByTagName(tag)
             self.HNAP_AUTH[key] = elements[0].firstChild.nodeValue
-
         self.HNAP_AUTH["private_key"] = hex_hmac_md5(
             self.HNAP_AUTH["public_key"] + self.HNAP_AUTH["password"],
             self.HNAP_AUTH["challenge"],
         ).upper()
 
-    def _getHNAP_auth(self, soap_action, private_key):
-        time_stamp = int(time.mktime(time.localtime()))
-        auth = hex_hmac_md5(private_key, str(time_stamp) + soap_action)
-        ret = auth.upper() + " " + str(time_stamp)
+    def _get_hnap_auth(self, soap_action, private_key):
+        timestamp = int(time.time())
+        auth = hex_hmac_md5(private_key, str(timestamp) + soap_action)
+        return f"{auth.upper()} {timestamp}"
 
-        return ret
-
-    def call_raw(self, method, **parameters):
-        req_url = self.HNAP_AUTH["url"]
-        req_method = self.HNAP_METHOD
-        req_headers = {
-            "Content-Type": "text/xml; charset=utf-8",
-            "SOAPAction": f'"{self.HNAP1_XMLNS}{method}"',
-            "HNAP_AUTH": self._getHNAP_auth(
-                f'"{self.HNAP1_XMLNS}{method}"',
-                self.HNAP_AUTH["private_key"],
-            ),
-            "Cookie": f"uid={self.HNAP_AUTH['cookie']}",
-        }
-
-        resp = requests.request(
-            method=req_method,
-            url=req_url,
-            headers=req_headers,
+    async def call_raw(self, method, **parameters):
+        http_client = await self.start()
+        soap_action = f'"{self.HNAP1_XMLNS}{method}"'
+        async with http_client.request(
+            self.HNAP_METHOD,
+            self.HNAP_AUTH["url"],
+            headers={
+                "Content-Type": "text/xml; charset=utf-8",
+                "SOAPAction": soap_action,
+                "HNAP_AUTH": self._get_hnap_auth(
+                    soap_action, self.HNAP_AUTH["private_key"]
+                ),
+                "Cookie": f"uid={self.HNAP_AUTH['cookie']}",
+            },
             data=self._build_method_envelope(method, **parameters),
             timeout=self._request_timeout,
-        )
-
-        if resp.status_code != 200:
+        ) as response:
+            response_text = await response.text()
+        if response.status != 200:
             raise MethodCallError(
-                f"Invalid status code: {resp.status_code}", resp.status_code
+                f"Invalid status code: {response.status}", response.status
             )
-        return resp.text
+        return response_text
 
-    def call(self, method, **parameters):
-        parsed = xmltodict.parse(self.call_raw(method, **parameters))
+    async def call(self, method, **parameters):
+        parsed = xmltodict.parse(await self.call_raw(method, **parameters))
         try:
-            res = parsed["soap:Envelope"]["soap:Body"][f"{method}Response"][
+            result = parsed["soap:Envelope"]["soap:Body"][f"{method}Response"][
                 f"{method}Result"
             ]
-            if res.lower() not in ("ok", "success"):
-                raise MethodCallError(f"{method} returned {res}")
-
+            if result.lower() not in ("ok", "success"):
+                raise MethodCallError(f"{method} returned {result}")
         except KeyError:
-            raise MethodCallError(f"Missing {method}Result key")
-
+            raise MethodCallError(f"Missing {method}Result key") from None
         return parsed["soap:Envelope"]["soap:Body"][f"{method}Response"]
 
-    def authenticate(self, force=False):
-        if self.is_authenticated() and not force:
+    async def authenticate(self, force=False):
+        if await self.is_authenticated() and not force:
             _LOGGER.debug("Client already authenticated")
             return
 
-        url = self.HNAP_AUTH["url"]
-        method = self.HNAP_METHOD
-        data = self._build_method_envelope(
-            self.HNAP_LOGIN_METHOD,
-            Action="request",
-            Username=self.HNAP_AUTH["username"],
-            LoginPassword="",
-            Captcha="",
-        )
-        headers = {
-            "Content-Type": "text/xml; charset=utf-8",
-            "SOAPAction": '"' + self.HNAP1_XMLNS + self.HNAP_LOGIN_METHOD + '"',
-        }
-
-        resp = requests.request(
-            method=method,
-            url=url,
-            data=data,
-            headers=headers,
+        http_client = await self.start()
+        async with http_client.request(
+            self.HNAP_METHOD,
+            self.HNAP_AUTH["url"],
+            data=self._build_method_envelope(
+                self.HNAP_LOGIN_METHOD,
+                Action="request",
+                Username=self.HNAP_AUTH["username"],
+                LoginPassword="",
+                Captcha="",
+            ),
+            headers={
+                "Content-Type": "text/xml; charset=utf-8",
+                "SOAPAction": f'"{self.HNAP1_XMLNS}{self.HNAP_LOGIN_METHOD}"',
+            },
             timeout=self._request_timeout,
-        )
-
-        if resp.status_code != 200:
+        ) as response:
+            response_text = await response.text()
+        if response.status != 200:
             raise AuthenticationError(
-                f"Invalid response while login: {resp.status_code} ({resp.text})"
+                f"Invalid response while login: {response.status} ({response_text})"
             )
 
-        self._save_login_result(resp.text)
-
-        # Phase 2
+        self._save_login_result(response_text)
         login_password = hex_hmac_md5(
             self.HNAP_AUTH["private_key"], self.HNAP_AUTH["challenge"]
         ).upper()
-
-        res = self.call(
+        result = await self.call(
             self.HNAP_LOGIN_METHOD,
             Action="login",
             Username=self.HNAP_AUTH["username"],
             LoginPassword=login_password,
             Captcha="",
         )
-
-        if res["LoginResult"] != "success":
-            raise AuthenticationError(res["LoginResult"])
-
+        if result["LoginResult"] != "success":
+            raise AuthenticationError(result["LoginResult"])
         self._authenticated = time.monotonic()
 
-    def is_authenticated(self):
-        return (self._authenticated > 0) and (
-            (time.monotonic() - self._authenticated) <= self._session_lifetime
+    async def is_authenticated(self):
+        return self._authenticated > 0 and (
+            time.monotonic() - self._authenticated <= self._session_lifetime
         )
 
-    def _inspect_device(self, **kwargs):
-        def _unwrap_string_ordered_dict(data):
-            ret = []
+    async def close(self):
+        if self._owns_http_client and self.http_client is not None:
+            await self.http_client.close()
+            self.http_client = None
 
-            for modtype, modname in data.items():
-                if modtype != "string":
-                    _LOGGER.warning(f"Unknow type class: ({modtype}, {modname}")
+    async def __aenter__(self):
+        await self.start()
+        return self
+
+    async def __aexit__(self, exc_type, exc_value, traceback):
+        await self.close()
+
+    async def _inspect_device(self, **kwargs):
+        def unwrap_string_ordered_dict(data):
+            values = []
+            for value_type, value in data.items():
+                if value_type != "string":
+                    _LOGGER.warning("Unknown type class: (%s, %s)", value_type, value)
                     continue
-
-                if isinstance(modname, str):
-                    ret.append(modname)
-
-                elif isinstance(modname, list):
-                    ret.extend(modname)
+                if isinstance(value, str):
+                    values.append(value)
+                elif isinstance(value, list):
+                    values.extend(value)
                 else:
-                    _LOGGER.error(f"Unknow value instance: ({modname!r}")
+                    _LOGGER.error("Unknown value instance: (%r)", value)
+            return values
 
-            return ret
-
-        info = dict(self.call("GetDeviceSettings", **kwargs))
-
-        # Rewrite some keys
-
-        # Rewrite some keys
+        info = dict(await self.call("GetDeviceSettings", **kwargs))
         info["ModuleTypes"] = (
-            _unwrap_string_ordered_dict(info["ModuleTypes"])
+            unwrap_string_ordered_dict(info["ModuleTypes"])
             if "ModuleTypes" in info
             else []
         )
-        info["SOAPActions"] = _unwrap_string_ordered_dict(info["SOAPActions"])
-
+        info["SOAPActions"] = unwrap_string_ordered_dict(info["SOAPActions"])
         return info
 
     @auth_required
-    def device_info(self, **kwargs):
-        info = self._inspect_device(**kwargs)
-
-        for k in ["@xmlns", "SOAPActions", "GetDeviceSettingsResult"]:
-            info.pop(k, None)
-
+    async def device_info(self, **kwargs):
+        info = await self._inspect_device(**kwargs)
+        for key in ("@xmlns", "SOAPActions", "GetDeviceSettingsResult"):
+            info.pop(key, None)
         return info
 
     @auth_required
-    def device_actions(self, **kwargs):
-        idx = len(self.HNAP1_XMLNS)
-
-        info = self._inspect_device(**kwargs)
-        actions = info["SOAPActions"]
-        actions = (x for x in actions if x.startswith(self.HNAP1_XMLNS))
-        actions = (x[idx:] for x in actions)
-
-        return list(actions)
+    async def device_actions(self, **kwargs):
+        info = await self._inspect_device(**kwargs)
+        return [
+            action[len(self.HNAP1_XMLNS) :]
+            for action in info["SOAPActions"]
+            if action.startswith(self.HNAP1_XMLNS)
+        ]
 
     @auth_required
-    def module_actions(self, *, ModuleID=DEFAULT_MODULE_ID, **kwargs):
-        resp = self.call("GetModuleSOAPActions", ModuleID=ModuleID, **kwargs)
-        actions = resp["ModuleSOAPList"]["SOAPActions"]["Action"]
-
-        return actions
+    async def module_actions(self, *, ModuleID=DEFAULT_MODULE_ID, **kwargs):
+        response = await self.call("GetModuleSOAPActions", ModuleID=ModuleID, **kwargs)
+        return response["ModuleSOAPList"]["SOAPActions"]["Action"]
 
 
 class ClientError(Exception):

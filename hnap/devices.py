@@ -12,21 +12,18 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
-# USA.
+# along with this program; if not, write to the Free Software Foundation,
+# Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 
-
-import logging
 from datetime import datetime
 from enum import Enum
+
+import aiohttp
 
 from .config import DeviceConfig
 from .const import DEFAULT_MODULE_ID
 from .helpers import auth_required
 from .soapclient import MethodCallError, SoapClient
-
-_LOGGER = logging.getLogger(__name__)
 
 
 class DeviceType(Enum):
@@ -45,41 +42,65 @@ class Device:
         self,
         config: DeviceConfig,
         *,
-        client=None,
+        soap_client: SoapClient | None = None,
+        http_client: aiohttp.ClientSession | None = None,
         module_id=DEFAULT_MODULE_ID,
     ):
         if not isinstance(config, DeviceConfig):
             raise TypeError("config must be a DeviceConfig")
+        if soap_client is not None and http_client is not None:
+            if soap_client.http_client is not http_client:
+                raise ValueError("soap_client and http_client must use the same client")
 
         self.config = config
-        self.client = client or SoapClient(config)
+        self.soap_client = (
+            soap_client
+            if soap_client is not None
+            else SoapClient(config, http_client=http_client)
+        )
         self.module_id = module_id
         self.device_type = self.DEVICE_TYPE
         self._info = None
 
-    @property
-    def info(self):
-        if not self._info:
-            self._info = self.client.device_info()
-
+    async def get_info(self):
+        if self._info is None:
+            self._info = await self.soap_client.device_info()
         return self._info
 
-    def call(self, *args, **kwargs):
+    async def call(self, *args, **kwargs):
         kwargs["ModuleID"] = self.module_id
-        return self.client.call(*args, **kwargs)
+        return await self.soap_client.call(*args, **kwargs)
 
-    def is_authenticated(self):
-        return self.client.is_authenticated()
+    async def is_authenticated(self):
+        return await self.soap_client.is_authenticated()
 
-    def authenticate(self):
-        return self.client.authenticate()
+    async def authenticate(self):
+        return await self.soap_client.authenticate()
 
-    def reconnect(self):
+    @property
+    def http_client(self):
+        return self.soap_client.http_client
+
+    async def reconnect(self):
         """Replace the SOAP client after authenticating a fresh connection."""
-        client = SoapClient(self.config)
-        client.authenticate()
-        self.client = client
+        previous_soap_client = self.soap_client
+        http_client = await previous_soap_client.start()
+        soap_client = SoapClient(self.config, http_client=http_client)
+        await soap_client.authenticate()
+        soap_client._owns_http_client = previous_soap_client._owns_http_client
+        previous_soap_client._owns_http_client = False
+        self.soap_client = soap_client
         self._info = None
+
+    async def close(self):
+        await self.soap_client.close()
+
+    async def __aenter__(self):
+        await self.soap_client.start()
+        return self
+
+    async def __aexit__(self, exc_type, exc_value, traceback):
+        await self.close()
 
 
 class Camera(Device):
@@ -92,9 +113,9 @@ class Camera(Device):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._base_url = (
-            {self.DEFAULT_SCHEMA}
-            + f"{self.client.username.lower()}:{self.client.password}@"
-            + f"{self.client.hostname}:{self.client.port}"
+            self.DEFAULT_SCHEMA
+            + f"{self.soap_client.username.lower()}:{self.soap_client.password}@"
+            + f"{self.soap_client.hostname}:{self.soap_client.port}"
         )
 
     @property
@@ -114,72 +135,45 @@ class Motion(Device):
         super().__init__(*args, **kwargs)
         self._backoff = None
 
-    @property
-    def backoff(self):
+    async def get_backoff(self):
         if self._backoff is None:
-            resp = self.call("GetMotionDetectorSettings")
+            response = await self.call("GetMotionDetectorSettings")
             try:
-                self._backoff = int(resp["Backoff"])
+                self._backoff = int(response["Backoff"])
             except (KeyError, ValueError, TypeError):
-                # Return the default value for tested devices but don't store
-                # to force retry
                 return 30
-
         return self._backoff
 
-    # @backoff.setter
-    # def backoff(self, seconds):
-    #     self.call(
-    #         "SetMotionDetectorSettings", Backoff=self._backoff
-    #     )
-    #     _LOGGER.warning("set backoff property has no effect")
-
-    # def authenticate(self):
-    #     super().authenticate()
-
-    #     res = self.call("GetMotionDetectorSettings")
-    #     try:
-    #         self._backoff = int(res["Backoff"])
-    #     except (ValueError, TypeError, KeyError):
-    #         _LOGGER.warning("Unable to get delta from device")
+    @auth_required
+    async def get_latest_detection(self):
+        response = await self.call("GetLatestDetection")
+        return datetime.fromtimestamp(float(response["LatestDetectTime"]))
 
     @auth_required
-    def get_latest_detection(self):
-        res = self.call("GetLatestDetection")
-        return datetime.fromtimestamp(float(res["LatestDetectTime"]))
-
-    @auth_required
-    def is_active(self):
-        now = datetime.now()
-        diff = (now - self.get_latest_detection()).total_seconds()
-
-        return diff <= self.backoff
+    async def is_active(self):
+        difference = (
+            datetime.now() - await self.get_latest_detection()
+        ).total_seconds()
+        return difference <= await self.get_backoff()
 
 
 class Router(Device):
     DEVICE_TYPE = DeviceType.ROUTER
-    # NOT tested
-    # See https://github.com/waffelheld/dlink-device-tracker/blob/master/custom_components/dlink_device_tracker/dlink_hnap.py#L95  # noqa: E501
     MODULE_TYPE = "check-module-types-for-router"
 
     @auth_required
-    def get_clients(self):
-        res = self.call("GetClientInfo")
-        clients = res["ClientInfoLists"]["ClientInfo"]
-
-        # Filter out offline clients
-        # clients = [x for x in clients if x["Type"] != "OFFLINE"]
-
-        ret = [
+    async def get_clients(self):
+        response = await self.call("GetClientInfo")
+        clients = response["ClientInfoLists"]["ClientInfo"]
+        return [
             {
                 "name": client["DeviceName"],
                 "nickName": client["NickName"],
-                "is_connected": client["Type"] == "OFFLINE" and 0 or 1,
+                "is_connected": int(client["Type"] != "OFFLINE"),
                 "mac": client["MacAddress"],
             }
             for client in clients
         ]
-        return ret
 
 
 class SirenSound(Enum):
@@ -191,12 +185,11 @@ class SirenSound(Enum):
     BEEP = 6
 
     @classmethod
-    def fromstring(cls, s):
-        s = s.upper()
-        for c in ["-", " ", "."]:
-            s = s.replace(c, "_")
-
-        return getattr(cls, s)
+    def fromstring(cls, value):
+        value = value.upper()
+        for separator in ("-", " ", "."):
+            value = value.replace(separator, "_")
+        return getattr(cls, value)
 
 
 class Siren(Device):
@@ -204,42 +197,39 @@ class Siren(Device):
     DEVICE_TYPE = DeviceType.SIREN
 
     @auth_required
-    def is_playing(self):
-        res = self.call("GetSirenAlarmSettings")
-        return res["IsSounding"] == "true"
+    async def is_playing(self):
+        response = await self.call("GetSirenAlarmSettings")
+        return response["IsSounding"] == "true"
 
     @auth_required
-    def play(self, sound=SirenSound.EMERGENCY, volume=100, duration=60):
-        ret = self.call(
+    async def play(self, sound=SirenSound.EMERGENCY, volume=100, duration=60):
+        response = await self.call(
             "SetSoundPlay",
             SoundType=sound.value,
             Volume=volume,
             Duration=duration,
         )
-        if ret["SetSoundPlayResult"] != "OK":
-            raise MethodCallError(f"Unable to play. Response: {ret}")
+        if response["SetSoundPlayResult"] != "OK":
+            raise MethodCallError(f"Unable to play. Response: {response}")
+
+    async def beep(self, volume=100, duration=1):
+        return await self.play(sound=SirenSound.BEEP, duration=duration, volume=volume)
 
     @auth_required
-    def beep(self, volume=100, duration=1):
-        return self.play(sound=SirenSound.BEEP, duration=duration, volume=volume)
-
-    @auth_required
-    def stop(self):
-        ret = self.call("SetAlarmDismissed")
-
-        if ret["SetAlarmDismissedResult"] != "OK":
-            raise MethodCallError(f"Unable to stop. Response: {ret}")
+    async def stop(self):
+        response = await self.call("SetAlarmDismissed")
+        if response["SetAlarmDismissedResult"] != "OK":
+            raise MethodCallError(f"Unable to stop. Response: {response}")
 
 
 class Water(Device):
-    # NOT tested
     MODULE_TYPE = "check-module-types-for-water-detector"
     DEVICE_TYPE = DeviceType.WATER
 
     @auth_required
-    def is_active(self):
-        ret = self.call("GetWaterDetectorState")
-        return ret.get("IsWater") == "true"
+    async def is_active(self):
+        response = await self.call("GetWaterDetectorState")
+        return response.get("IsWater") == "true"
 
 
 _DEVICE_CLASSES = {
@@ -257,27 +247,7 @@ _DISCOVERY_TYPES = {
 }
 
 
-def DeviceFactory(
-    device_type: DeviceType | None = None,
-    *,
-    config: DeviceConfig,
-    module_id: str = DEFAULT_MODULE_ID,
-) -> Device:
-    """Create a specified device without discovery, or discover its type if None."""
-    if not isinstance(config, DeviceConfig):
-        raise TypeError("config must be a DeviceConfig")
-    if device_type is not None:
-        if not isinstance(device_type, DeviceType):
-            raise TypeError("device_type must be a DeviceType or None")
-    client = SoapClient(config)
-    if device_type is not None:
-        device = _DEVICE_CLASSES[device_type](
-            config, client=client, module_id=module_id
-        )
-        device.device_type = device_type
-        return device
-
-    info = client.device_info()
+def _resolve_discovered_type(info):
     module_types = info.get("ModuleTypes", [])
     if isinstance(module_types, str):
         module_types = [module_types]
@@ -294,8 +264,35 @@ def DeviceFactory(
     )
     if device_type is None:
         raise TypeError(f"Unsupported device module types: {module_types!r}")
+    return device_type
 
-    device = _DEVICE_CLASSES[device_type](config, client=client, module_id=module_id)
+
+async def DeviceFactory(
+    device_type: DeviceType | None = None,
+    *,
+    config: DeviceConfig,
+    module_id: str = DEFAULT_MODULE_ID,
+    http_client=None,
+) -> Device:
+    """Create a device or discover its type using HNAP."""
+    if not isinstance(config, DeviceConfig):
+        raise TypeError("config must be a DeviceConfig")
+    if device_type is not None and not isinstance(device_type, DeviceType):
+        raise TypeError("device_type must be a DeviceType or None")
+
+    soap_client = SoapClient(config, http_client=http_client)
+    try:
+        info = None
+        if device_type is None:
+            info = await soap_client.device_info()
+            device_type = _resolve_discovered_type(info)
+        device = _DEVICE_CLASSES[device_type](
+            config, soap_client=soap_client, module_id=module_id
+        )
+    except BaseException:
+        await soap_client.close()
+        raise
+
     device.device_type = device_type
     device._info = info
     return device

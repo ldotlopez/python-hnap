@@ -21,10 +21,10 @@ import functools
 
 def auth_required(fn):
     @functools.wraps(fn)
-    def _wrap(access, *args, **kwargs):
-        if not access.is_authenticated():
-            access.authenticate()
+    async def _wrap(access, *args, **kwargs):
+        if not await access.is_authenticated():
+            await access.authenticate()
 
-        return fn(access, *args, **kwargs)
+        return await fn(access, *args, **kwargs)
 
     return _wrap

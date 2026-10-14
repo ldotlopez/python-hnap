@@ -28,7 +28,11 @@ from .devices import (
     SirenSound,
     Water,
 )
-from .soapclient import AuthenticationError, MethodCallError, SoapClient
+from .soapclient import (
+    AuthenticationError,
+    MethodCallError,
+    SoapClient,
+)
 
 __all__ = [
     "AuthenticationError",
