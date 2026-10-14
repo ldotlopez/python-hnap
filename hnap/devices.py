@@ -48,9 +48,12 @@ class Device:
     ):
         if not isinstance(config, DeviceConfig):
             raise TypeError("config must be a DeviceConfig")
-        if soap_client is not None and http_client is not None:
-            if soap_client.http_client is not http_client:
-                raise ValueError("soap_client and http_client must use the same client")
+        if (
+            soap_client is not None
+            and http_client is not None
+            and soap_client.http_client is not http_client
+        ):
+            raise ValueError("soap_client and http_client must use the same client")
 
         self.config = config
         self.soap_client = (
@@ -80,17 +83,6 @@ class Device:
     @property
     def http_client(self):
         return self.soap_client.http_client
-
-    async def reconnect(self):
-        """Replace the SOAP client after authenticating a fresh connection."""
-        previous_soap_client = self.soap_client
-        http_client = await previous_soap_client.start()
-        soap_client = SoapClient(self.config, http_client=http_client)
-        await soap_client.authenticate()
-        soap_client._owns_http_client = previous_soap_client._owns_http_client
-        previous_soap_client._owns_http_client = False
-        self.soap_client = soap_client
-        self._info = None
 
     async def close(self):
         await self.soap_client.close()

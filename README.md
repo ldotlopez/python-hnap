@@ -38,17 +38,14 @@ async def main():
 
         discovered = await DeviceFactory(config=config)
         async with discovered:
-            await discovered.reconnect()
+            await discovered.authenticate()
 
 
 asyncio.run(main())
 ```
 
 `DeviceConfig` retains connection settings independently of authentication
-state. `await device.reconnect()` authenticates a fresh SOAP client before
-replacing the current one, preserves the device class and module ID, and does
-not repeat type discovery. A failed reconnect leaves the current client in
-place. Operations are not retried after transport errors because the device
+state. Operations are not retried after transport errors because the device
 may have completed an action even if its response was lost.
 
 `SoapClient` creates an `aiohttp.ClientSession` when `await client.start()` is
