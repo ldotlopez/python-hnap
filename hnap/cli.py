@@ -30,25 +30,15 @@ import aiohttp
 from .config import DeviceConfig
 from .soapclient import SoapClient
 
-OUTPUT_TMPL = """
-Device info
-===========
-{info}
 
-Device actions
-==============
-{device_actions}
-
-Module actions
-==============
-{module_actions}
-"""
+def _positive_seconds(value):
+    seconds = int(value)
+    if seconds <= 0:
+        raise argparse.ArgumentTypeError("seconds must be greater than zero")
+    return seconds
 
 
-async def _main():
-    logging.basicConfig()
-    logging.getLogger("hnap").setLevel(logging.DEBUG)
-
+def _create_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--hostname",
@@ -57,7 +47,7 @@ async def _main():
     )
     parser.add_argument(
         "--password",
-        required=True,
+        required=not bool(os.environ.get("HNAP_PASSWORD")),
         metavar="password",
         default=os.environ.get("HNAP_PASSWORD", ""),
     )
@@ -66,17 +56,18 @@ async def _main():
         default="admin",
         metavar="username",
     )
-    parser.add_argument(
-        "--call",
-        nargs=1,
-        default=[],
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    call_parser = subparsers.add_parser("call", help="Call a raw SOAP action")
+    call_parser.add_argument(
+        "method",
         metavar="MethodName",
         help=(
-            "If you are calling a SOAP action you must pass, at least, "
-            "`--param Module 1` and, maybe, `--param Controller 1`."
+            "If the action requires parameters, pass them with --param, "
+            "for example --param Module 1."
         ),
     )
-    parser.add_argument(
+    call_parser.add_argument(
         "--param",
         action="append",
         nargs=2,
@@ -85,7 +76,26 @@ async def _main():
         metavar=("ParamName", "Value"),
         help="Params to pass to call. Multiple params can be passed.",
     )
-    args = parser.parse_args()
+
+    monitor_parser = subparsers.add_parser(
+        "monitor", help="Poll the device readiness status"
+    )
+    monitor_parser.add_argument(
+        "--seconds",
+        type=_positive_seconds,
+        default=30,
+        metavar="N",
+        help="Seconds between readiness checks (default: 30)",
+    )
+    subparsers.add_parser("inspect", help="Detect device type and show device settings")
+    return parser
+
+
+async def _main():
+    logging.basicConfig()
+    logging.getLogger("hnap").setLevel(logging.DEBUG)
+
+    args = _create_parser().parse_args()
 
     config = DeviceConfig(
         hostname=args.hostname,
@@ -110,9 +120,9 @@ async def _main():
             )
             sys.exit(1)
 
-        if args.call:
+        if args.command == "call":
             params = dict(args.params)
-            resp = await client.call_raw(args.call[0], **params)
+            resp = await client.call_raw(args.method, **params)
             if not resp:
                 print("Empty (or unsupported) response")
                 return
@@ -120,14 +130,18 @@ async def _main():
             dom = xml.dom.minidom.parseString(resp)
             print(dom.toprettyxml())
 
-        else:
+        elif args.command == "monitor":
+            while True:
+                print(pprint.pformat(await client.call("IsDeviceReady")))
+                await asyncio.sleep(args.seconds)
+
+        elif args.command == "inspect":
+            info = await client.device_info()
             print(
-                OUTPUT_TMPL.format(
-                    info=pprint.pformat(await client.device_info()),
-                    device_actions=pprint.pformat(await client.device_actions()),
-                    module_actions=pprint.pformat(await client.module_actions()),
-                ).strip()
+                "Detected device type(s): "
+                f"{pprint.pformat(info.get('ModuleTypes', []))}"
             )
+            print(pprint.pformat(info))
 
 
 def main():

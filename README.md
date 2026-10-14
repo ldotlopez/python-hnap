@@ -62,6 +62,22 @@ Device operations such as `is_playing()`, `play()`, `beep()`, and
 `get_clients()` must be awaited. Cached device information is retrieved with
 `await device.get_info()`.
 
+## Command-line interface
+
+The `hnap` command requires a hostname and password (or `HNAP_PASSWORD`) and
+provides three subcommands:
+
+```console
+hnap --hostname 192.0.2.10 --password secret inspect
+hnap --hostname 192.0.2.10 --password secret monitor --seconds 10
+hnap --hostname 192.0.2.10 --password secret call GetDeviceSettings --param Module 1
+```
+
+`inspect` reports the device's module types and settings. `monitor` calls
+`IsDeviceReady` immediately and repeats every 30 seconds by default; use
+`--seconds` to change the interval. `call` invokes a raw SOAP action and accepts
+repeated `--param NAME VALUE` arguments.
+
 **Useful links**
 
   * [Product page](https://eu.dlink.com/es/es/products/dch-s220-mydlink-home-siren)
