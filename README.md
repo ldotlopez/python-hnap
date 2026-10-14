@@ -17,37 +17,49 @@ routers, water detectors and more.
 ## Async devices
 
 All network operations are asynchronous. Pass a `DeviceType` to construct a
-known device without querying it first, or omit the type to discover the
-concrete device:
+known device without querying it first:
+
+```python
+import asyncio
+
+from hnap import DeviceConfig, DeviceFactory, DeviceType
+
+async def main():
+    config = DeviceConfig(hostname="192.0.2.10", password="secret")
+    siren = await DeviceFactory(DeviceType.SIREN, config=config)
+
+    async with siren:
+        settings = await siren.call("GetSirenAlarmSettings")
+        print(settings)
+
+asyncio.run(main())
+```
+
+To use your own `aiohttp.ClientSession`, pass it to `SoapClient`. The session
+remains caller-owned and is closed by its context manager:
 
 ```python
 import asyncio
 
 import aiohttp
-from hnap import DeviceConfig, DeviceFactory, DeviceType
-
-config = DeviceConfig(hostname="192.0.2.10", password="secret")
+from hnap import DeviceConfig, SoapClient
 
 
 async def main():
+    config = DeviceConfig(hostname="192.0.2.10", password="secret")
     async with aiohttp.ClientSession() as http_client:
-        siren = await DeviceFactory(
-            DeviceType.SIREN, config=config, http_client=http_client
-        )
-        await siren.authenticate()
-        await siren.soap_client.call("GetSirenAlarmSettings")
-
-        discovered = await DeviceFactory(config=config)
-        async with discovered:
-            await discovered.authenticate()
+        async with SoapClient(config, http_client=http_client) as client:
+            print(await client.device_info())
 
 
 asyncio.run(main())
 ```
 
 `DeviceConfig` retains connection settings independently of authentication
-state. Operations are not retried after transport errors because the device
-may have completed an action even if its response was lost.
+state. Authentication is handled automatically when a protected operation
+needs it; you do not need to call `authenticate()` first. Operations are not
+retried after transport errors because the device may have completed an action
+even if its response was lost.
 
 `SoapClient` creates an `aiohttp.ClientSession` when `await client.start()` is
 called, when the client or device is entered as an async context manager, or
